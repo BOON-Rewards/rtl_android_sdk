@@ -43,9 +43,10 @@ class RTLWebView @JvmOverloads constructor(
                 displayZoomControls = false
             }
 
-            // Enable debugging in debug builds
+            // Enable debugging in debug builds (check at runtime to avoid BuildConfig dependency)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+                val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                WebView.setWebContentsDebuggingEnabled(isDebuggable)
             }
 
             webViewClient = RTLWebViewClient()
@@ -201,7 +202,11 @@ class RTLWebView @JvmOverloads constructor(
         }
 
         private fun handleUserAuth(json: JSONObject) {
-            val accessToken = json.optString("accessToken", "")
+            // Accept both "accessToken" and "token" keys
+            var accessToken = json.optString("accessToken", "")
+            if (accessToken.isEmpty()) {
+                accessToken = json.optString("token", "")
+            }
             val refreshToken = json.optString("refreshToken", "")
 
             if (accessToken.isEmpty() || refreshToken.isEmpty()) {

@@ -3,10 +3,14 @@ package com.affina.rtlsdk.example
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.affina.rtlsdk.RTLEnvironment
 import com.affina.rtlsdk.RTLSdk
@@ -21,6 +25,9 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     private lateinit var webViewContainer: FrameLayout
     private var rtlWebView: RTLWebView? = null
 
+    // Test token - in a real app, this would come from your authentication system
+    private val testToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiMmIwMzBhMzYtYWQyMS0xMjIyLTEyMzItYzViZjg5OGQxN2IxIiwiZ2VuZGVyIjoiRmVtYWxlIiwiZmlyc3ROYW1lIjoiRXJpY2thIiwibGFzdE5hbWUiOiJOIiwiZW1haWwiOiJsZXZvbmFsdkBnZXRib29uLmNvbSJ9LCJvcmdJZCI6ImNrcDluM2Q4eTAwNjNrc3V2Y2hjNndmZ3QiLCJjaGFwdGVySWQiOiJjMzIwNDdiNC01ZDk5LTQ1MDUtYjczMy03MWYxZmRlNGU1NzAiLCJwb2ludHNQZXJEb2xsYXIiOjIwMCwiaWF0IjoxNzU0MzA3MDg0LCJleHAiOjE4NDkwMzMwMDJ9.3yTQC0bEeiogdHd4qM_Wh8bRnY_aQ9F9ngk5QUF_CF8"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -29,7 +36,17 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         loginButton = findViewById(R.id.loginButton)
         webViewContainer = findViewById(R.id.webViewContainer)
 
+        // Hide webview initially
+        webViewContainer.visibility = View.GONE
+
         loginButton.setOnClickListener { onLoginClicked() }
+
+        // Handle window insets to avoid status bar overlap
+        ViewCompat.setOnApplyWindowInsetsListener(webViewContainer) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
 
         initializeSDK()
     }
@@ -43,68 +60,75 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
             context = this
         )
 
-        // Set listener
+        // Set listener BEFORE creating webview
         RTLSdk.getInstance().listener = this
 
-        // Create and embed the webview
+        // Create webview (hidden until login)
         val webView = RTLSdk.getInstance().createWebView(this)
         webViewContainer.addView(webView)
         rtlWebView = webView
 
-        updateStatus()
+        statusText.text = "Tap Login to continue"
     }
 
     private fun onLoginClicked() {
-        // In a real app, you would get this token from your authentication system
-        val testToken = "your-jwt-token-here"
-
         statusText.text = "Logging in..."
         loginButton.isEnabled = false
 
         lifecycleScope.launch {
-            val success = RTLSdk.getInstance().login(testToken)
+            RTLSdk.getInstance().requestTokenAndLogin()
 
             runOnUiThread {
-                if (success) {
-                    statusText.text = "Login successful!"
-                } else {
-                    statusText.text = "Login failed or timed out"
-                }
-                loginButton.isEnabled = true
-                updateStatus()
+                // Show full screen webview
+                showFullScreenWebView()
             }
         }
     }
 
-    private fun updateStatus() {
-        val isLoggedIn = RTLSdk.getInstance().isLoggedIn()
-        val statusStr = when (isLoggedIn) {
-            true -> "Logged In"
-            false -> "Not Logged In"
-            null -> "Not Initialized"
-        }
-        statusText.text = "SDK Status: $statusStr"
+    private fun showFullScreenWebView() {
+        // Hide login UI
+        statusText.visibility = View.GONE
+        loginButton.visibility = View.GONE
+
+        // Show webview full screen
+        webViewContainer.visibility = View.VISIBLE
+
+        // Hide action bar for true full screen
+        supportActionBar?.hide()
     }
 
     // RTLSdkListener implementation
 
     override fun onAuthenticated(accessToken: String, refreshToken: String) {
-        println("Authenticated! Access token: ${accessToken.take(20)}...")
-        runOnUiThread { updateStatus() }
+        Log.d("RTLExample", "Authenticated! Access token: ${accessToken.take(20)}...")
     }
 
     override fun onLogout() {
-        println("User logged out")
-        runOnUiThread { updateStatus() }
+        Log.d("RTLExample", "User logged out")
+        runOnUiThread {
+            // Show login UI again
+            webViewContainer.visibility = View.GONE
+            statusText.visibility = View.VISIBLE
+            statusText.text = "Session ended. Tap Login to continue"
+            loginButton.visibility = View.VISIBLE
+            loginButton.isEnabled = true
+            supportActionBar?.show()
+        }
     }
 
     override fun onOpenUrl(url: String, forceExternal: Boolean) {
-        println("Open URL requested: $url, forceExternal: $forceExternal")
+        Log.d("RTLExample", "Open URL requested: $url, forceExternal: $forceExternal")
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         startActivity(intent)
     }
 
     override fun onReady() {
-        println("RTL app is ready")
+        Log.d("RTLExample", "RTL app is ready")
+    }
+
+    override suspend fun onNeedsToken(): String? {
+        Log.d("RTLExample", "SDK requesting token...")
+        // In a real app, call your auth service here
+        return testToken
     }
 }

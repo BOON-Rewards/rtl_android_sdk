@@ -30,6 +30,14 @@ interface RTLSdkListener {
      * Called when the RTL web app has finished loading and is ready
      */
     fun onReady()
+
+    /**
+     * Called when SDK needs a fresh token from the host app.
+     * This is called on initial login and when token expires after 20 hours.
+     *
+     * @return JWT token string, or null if unavailable
+     */
+    suspend fun onNeedsToken(): String?
 }
 
 /**
@@ -40,4 +48,5 @@ open class RTLSdkListenerAdapter : RTLSdkListener {
     override fun onLogout() {}
     override fun onOpenUrl(url: String, forceExternal: Boolean) {}
     override fun onReady() {}
+    override suspend fun onNeedsToken(): String? = null
 }

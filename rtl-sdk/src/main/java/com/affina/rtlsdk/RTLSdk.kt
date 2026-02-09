@@ -3,8 +3,13 @@ package com.affina.rtlsdk
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.*
 import kotlin.coroutines.resume
 
@@ -26,7 +31,11 @@ class RTLSdk private constructor() {
             }
         }
 
+        private const val TAG = "RTLSdk"
         private const val LOGIN_TIMEOUT_MS = 30_000L
+        private const val PREFS_NAME = "RTLSdkPrefs"
+        private const val KEY_TOKEN_TIMESTAMP = "lastTokenTimestamp"
+        private const val TOKEN_EXPIRY_MS = 20 * 60 * 60 * 1000L // 20 hours
     }
 
     // Configuration
@@ -43,6 +52,32 @@ class RTLSdk private constructor() {
     // Async login
     private var loginContinuation: CancellableContinuation<Boolean>? = null
     private var loginTimeoutJob: Job? = null
+
+    // Token management
+    private var sharedPrefs: SharedPreferences? = null
+
+    private var lastTokenTimestamp: Long
+        get() = sharedPrefs?.getLong(KEY_TOKEN_TIMESTAMP, 0L) ?: 0L
+        set(value) {
+            sharedPrefs?.edit()?.putLong(KEY_TOKEN_TIMESTAMP, value)?.apply()
+        }
+
+    private val isTokenExpired: Boolean
+        get() {
+            val lastTime = lastTokenTimestamp
+            if (lastTime == 0L) return true
+            return System.currentTimeMillis() - lastTime >= TOKEN_EXPIRY_MS
+        }
+
+    // Lifecycle observer for foreground detection
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            // App came to foreground
+            CoroutineScope(Dispatchers.Main).launch {
+                checkAndRefreshTokenIfNeeded()
+            }
+        }
+    }
 
     /**
      * Listener for SDK events
@@ -69,6 +104,25 @@ class RTLSdk private constructor() {
         this.application = context.application
         this.isInitialized = true
         this._isLoggedIn = false
+        this.sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        setupLifecycleObserver()
+    }
+
+    private fun setupLifecycleObserver() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+    }
+
+    private suspend fun checkAndRefreshTokenIfNeeded() {
+        if (!isTokenExpired) {
+            Log.d(TAG, "Token still valid, no refresh needed")
+            return
+        }
+        if (webView == null) {
+            Log.d(TAG, "WebView not created, skipping token refresh")
+            return
+        }
+        Log.d(TAG, "Token expired, requesting fresh token...")
+        requestTokenAndLogin()
     }
 
     /**
@@ -94,6 +148,21 @@ class RTLSdk private constructor() {
         val webView = RTLWebView(context, this)
         this.webView = webView
         return webView
+    }
+
+    /**
+     * Request token from listener and perform login.
+     * Called on initial webview show and when token expires.
+     *
+     * @return true if login succeeded, false if failed or no token provided
+     */
+    suspend fun requestTokenAndLogin(): Boolean {
+        val token = listener?.onNeedsToken()
+        if (token == null) {
+            Log.d(TAG, "Token requested but listener returned null")
+            return false
+        }
+        return login(token)
     }
 
     /**
@@ -161,6 +230,7 @@ class RTLSdk private constructor() {
 
     internal fun handleUserAuthReceived(accessToken: String, refreshToken: String) {
         _isLoggedIn = true
+        lastTokenTimestamp = System.currentTimeMillis()
         listener?.onAuthenticated(accessToken, refreshToken)
         completeLogin(success = true)
     }
