@@ -372,6 +372,158 @@ The SDK automatically manages token expiration:
 
 This ensures users always have a valid session without manual intervention.
 
+### JWT Token Structure
+
+The JWT token provided to the SDK should contain the following structure:
+
+```json
+{
+  "user": {
+    "id": "2b030a36-ad21-1222-1232-c5bf898d17b1",
+    "gender": "Female",
+    "firstName": "Ericka",
+    "lastName": "N",
+    "email": "user@example.com"
+  },
+  "orgId": "ckp9n3d8y0063ksuvchc6wfgt",
+  "chapterId": "c32047b4-5d99-4505-b733-71f1fde4e570",
+  "pointsPerDollar": 200,
+  "iat": 1754307084,
+  "exp": 1754307144
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `user.id` | Unique user identifier |
+| `user.gender` | User's gender |
+| `user.firstName` | User's first name |
+| `user.lastName` | User's last name |
+| `user.email` | User's email address |
+| `orgId` | Organization identifier |
+| `chapterId` | Chapter identifier |
+| `pointsPerDollar` | Points earned per dollar spent |
+| `iat` | Issued at timestamp (Unix) |
+| `exp` | Expiration timestamp (Unix) |
+
+### Best Practices
+
+- **Set JWT expiry to 1 minute**: For security, generate tokens with a short expiry time (60 seconds). The SDK will request a fresh token via `onNeedsToken()` when needed.
+- Generate tokens server-side only - never expose your signing secret in the mobile app
+- Always validate user identity before generating tokens
+
+## Location-Based Notifications
+
+The SDK provides built-in support for geolocation-based notifications. When enabled, the SDK will:
+- Request location permissions from the user
+- Track location changes in the background
+- Fetch nearby stores from the RTL API
+- Set up geofences around stores (100m radius)
+- Show local notifications when user enters a store geofence
+
+### Enabling Location Features
+
+After login, enable location features:
+
+```kotlin
+// In your login success handler
+RTLSdk.getInstance().enableLocationFeatures(this)
+```
+
+**Important:** You must forward permission results to the SDK in your Activity:
+
+```kotlin
+override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray
+) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    RTLSdk.getInstance().handlePermissionResult(requestCode, permissions, grantResults)
+}
+```
+
+### Location API Reference
+
+#### Methods
+
+##### `enableLocationFeatures(activity)`
+Enables location-based notifications. Requests permissions and sets up geofencing.
+
+```kotlin
+fun enableLocationFeatures(activity: Activity)
+```
+
+##### `disableLocationFeatures()`
+Disables location-based notifications and stops all monitoring.
+
+```kotlin
+fun disableLocationFeatures()
+```
+
+##### `handlePermissionResult(requestCode, permissions, grantResults)`
+Forwards permission results to the SDK. Call this from your Activity's `onRequestPermissionsResult`.
+
+```kotlin
+fun handlePermissionResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray
+)
+```
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `isLocationFeaturesEnabled` | `Boolean` | Whether location features are currently enabled |
+| `hasLocationPermission` | `Boolean` | Whether background location permission is granted |
+
+### Optional Location Callbacks
+
+You can optionally receive location-related callbacks:
+
+```kotlin
+class MyListener : RTLSdkListenerAdapter() {
+    override val onLocationPermissionChange: ((granted: Boolean) -> Unit)? = { granted ->
+        Log.d("RTL", "Location permission changed: $granted")
+    }
+
+    override val onGeofenceEnter: ((store: RTLStore) -> Unit)? = { store ->
+        Log.d("RTL", "Entered geofence for store: ${store.name}")
+    }
+}
+```
+
+### Notification Rate Limiting
+
+The SDK applies intelligent rate limiting to notifications:
+
+| Rule | Value |
+|------|-------|
+| Daily limit | 2 notifications |
+| Weekly limit | 7 notifications |
+| Monthly limit | 20 notifications |
+| Merchant cooldown | 24 hours between same merchant |
+| Time window | 10:00 AM - 8:00 PM only |
+
+### Required Permissions
+
+The SDK declares these permissions in its manifest (automatically merged):
+
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+```
+
+For Android 10+, background location permission requires a two-step process:
+1. User grants "While using the app" permission
+2. Then user can grant "Allow all the time" from Settings
+
+The SDK handles this flow automatically via the permission request dialog.
+
 ## Handling External URLs
 
 When the RTL web app needs to open an external URL, implement `onOpenUrl`:
@@ -439,8 +591,3 @@ ViewCompat.setOnApplyWindowInsetsListener(webViewContainer) { view, windowInsets
 }
 ```
 
-## License
-
-Copyright (c) 2024 Affina Loyalty. All rights reserved.
-
-This SDK is provided under a proprietary license. Use of this SDK requires a valid business agreement with Affina Loyalty. Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
