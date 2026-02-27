@@ -259,18 +259,6 @@ Triggers logout in the webview.
 fun logout()
 ```
 
-##### `registerPushToken(token, type)`
-Registers a push notification token with the RTL backend.
-
-```kotlin
-fun registerPushToken(token: String, type: RTLTokenType)
-```
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `token` | `String` | The device push token |
-| `type` | `RTLTokenType` | `APNS` or `FCM` |
-
 ##### `isLoggedIn()`
 Returns the current login state.
 
@@ -338,15 +326,6 @@ Environment configuration enum.
 |------|----------------|
 | `STAGING` | `{program}.staging.getboon.com` |
 | `PRODUCTION` | `{program}.prod.getboon.com` |
-
-### RTLTokenType
-
-Push notification token type enum.
-
-| Case | Value | Description |
-|------|-------|-------------|
-| `APNS` | `"apns"` | Apple Push Notification Service |
-| `FCM` | `"fcm"` | Firebase Cloud Messaging |
 
 ### RTLWebView
 

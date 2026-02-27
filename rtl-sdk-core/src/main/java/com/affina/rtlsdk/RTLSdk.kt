@@ -247,18 +247,6 @@ class RTLSdk private constructor() {
         webView?.evaluateJavascript(script)
     }
 
-    /**
-     * Register a push notification token with the RTL backend
-     *
-     * @param token The device push token
-     * @param type The token type (APNS or FCM)
-     */
-    fun registerPushToken(token: String, type: RTLTokenType) {
-        val escapedToken = token.replace("'", "\\'")
-        val script = "window.rtlNative?.registerPushToken('$escapedToken', '${type.value}')"
-        webView?.evaluateJavascript(script)
-    }
-
     // MARK: - Location Features
 
     /**
@@ -504,11 +492,31 @@ class RTLSdk private constructor() {
 
     internal fun handleOpenUrl(url: String, forceExternal: Boolean) {
         if (forceExternal) {
-            // Open in external browser via listener
-            listener?.onOpenUrl(url, true)
+            // Open in external browser
+            openExternalBrowser(url)
         } else {
             // Open in-app browser (Chrome Custom Tab)
             openInAppBrowser(url)
+        }
+        // Notify listener (informational - no action required)
+        listener?.onOpenUrl(url, forceExternal)
+    }
+
+    /**
+     * Open a URL in the system's default browser
+     */
+    private fun openExternalBrowser(url: String) {
+        val context = currentActivityRef?.get() ?: application?.applicationContext
+        if (context == null) {
+            Log.w(TAG, "Cannot open external browser: no context")
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open external browser: ${e.message}")
         }
     }
 
@@ -518,9 +526,9 @@ class RTLSdk private constructor() {
     private fun openInAppBrowser(url: String) {
         val activity = currentActivityRef?.get()
         if (activity == null) {
-            Log.w(TAG, "Cannot open in-app browser: no activity reference")
-            // Fallback to external browser via listener
-            listener?.onOpenUrl(url, true)
+            Log.w(TAG, "Cannot open in-app browser: no activity reference, falling back to external browser")
+            // Fallback to external browser
+            openExternalBrowser(url)
             return
         }
 
@@ -530,9 +538,9 @@ class RTLSdk private constructor() {
                 .build()
             customTabsIntent.launchUrl(activity, Uri.parse(url))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to open Chrome Custom Tab: ${e.message}")
-            // Fallback to external browser via listener
-            listener?.onOpenUrl(url, true)
+            Log.e(TAG, "Failed to open Chrome Custom Tab: ${e.message}, falling back to external browser")
+            // Fallback to external browser
+            openExternalBrowser(url)
         }
     }
 
