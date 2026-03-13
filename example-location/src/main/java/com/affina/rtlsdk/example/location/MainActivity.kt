@@ -1,7 +1,5 @@
 package com.affina.rtlsdk.example.location
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -38,9 +36,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         loginButton = findViewById(R.id.loginButton)
         webViewContainer = findViewById(R.id.webViewContainer)
 
-        // Hide webview initially
-        webViewContainer.visibility = View.GONE
-
         loginButton.setOnClickListener { onLoginClicked() }
 
         // Handle window insets to avoid status bar overlap
@@ -60,16 +55,14 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
             environment = RTLEnvironment.STAGING,
             urlScheme = "rtlsdkexample",
             context = this,
+            listener = this,
             externalChapterId = "c32047b4-5d99-4505-b733-71f1fde4e570"
         )
 
         // Install location module (required before enableLocationFeatures)
         RTLLocationModule.install(RTLSdk.getInstance())
 
-        // Set listener BEFORE creating webview
-        RTLSdk.getInstance().listener = this
-
-        // Create webview (hidden until login)
+        // Create webview (the SDK manages its visibility)
         val webView = RTLSdk.getInstance().createWebView(this)
         webViewContainer.addView(webView)
         rtlWebView = webView
@@ -82,14 +75,18 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         loginButton.isEnabled = false
 
         lifecycleScope.launch {
-            RTLSdk.getInstance().requestTokenAndLogin()
+            val result = RTLSdk.getInstance().presentExperience()
 
             runOnUiThread {
-                // Show full screen webview
-                showFullScreenWebView()
-
-                // Enable location features (SDK handles permissions internally)
-                RTLSdk.getInstance().enableLocationFeatures(this@MainActivity)
+                if (result.success) {
+                    statusText.visibility = View.GONE
+                    loginButton.visibility = View.GONE
+                    supportActionBar?.hide()
+                    RTLSdk.getInstance().enableLocationFeatures(this@MainActivity)
+                } else {
+                    statusText.text = "Failed to load RTL experience (${result.errorCode ?: "unknown_error"})"
+                    loginButton.isEnabled = true
+                }
             }
         }
     }
@@ -104,18 +101,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         RTLSdk.getInstance().handlePermissionResult(requestCode, permissions, grantResults)
     }
 
-    private fun showFullScreenWebView() {
-        // Hide login UI
-        statusText.visibility = View.GONE
-        loginButton.visibility = View.GONE
-
-        // Show webview full screen
-        webViewContainer.visibility = View.VISIBLE
-
-        // Hide action bar for true full screen
-        supportActionBar?.hide()
-    }
-
     // RTLSdkListener implementation
 
     override fun onAuthenticated(accessToken: String, refreshToken: String) {
@@ -125,8 +110,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     override fun onLogout() {
         Log.d("RTLExample", "User logged out")
         runOnUiThread {
-            // Show login UI again
-            webViewContainer.visibility = View.GONE
             statusText.visibility = View.VISIBLE
             statusText.text = "Session ended. Tap Login to continue"
             loginButton.visibility = View.VISIBLE
@@ -137,8 +120,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
 
     override fun onOpenUrl(url: String, forceExternal: Boolean) {
         Log.d("RTLExample", "Open URL requested: $url, forceExternal: $forceExternal")
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        startActivity(intent)
     }
 
     override fun onReady() {

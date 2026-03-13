@@ -11,12 +11,12 @@ interface RTLSdkListener {
      * @param accessToken The access token from authentication
      * @param refreshToken The refresh token from authentication
      */
-    fun onAuthenticated(accessToken: String, refreshToken: String)
+    fun onAuthenticated(accessToken: String, refreshToken: String) {}
 
     /**
      * Called when user logs out
      */
-    fun onLogout()
+    fun onLogout() {}
 
     /**
      * Called when the RTL web app requests opening a URL
@@ -24,12 +24,12 @@ interface RTLSdkListener {
      * @param url The URL to open
      * @param forceExternal If true, should open in external browser; otherwise can use in-app browser
      */
-    fun onOpenUrl(url: String, forceExternal: Boolean)
+    fun onOpenUrl(url: String, forceExternal: Boolean) {}
 
     /**
      * Called when the RTL web app has finished loading and is ready
      */
-    fun onReady()
+    fun onReady() {}
 
     /**
      * Called when SDK needs a fresh token from the host app.
@@ -60,10 +60,6 @@ interface RTLSdkListener {
  * Adapter class with default implementations for RTLSdkListener
  */
 open class RTLSdkListenerAdapter : RTLSdkListener {
-    override fun onAuthenticated(accessToken: String, refreshToken: String) {}
-    override fun onLogout() {}
-    override fun onOpenUrl(url: String, forceExternal: Boolean) {}
-    override fun onReady() {}
     override suspend fun onNeedsToken(): String? = null
 
     // Location callbacks - override to provide custom implementations

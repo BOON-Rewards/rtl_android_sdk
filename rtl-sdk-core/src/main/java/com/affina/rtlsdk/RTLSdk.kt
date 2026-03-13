@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.View
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -17,6 +18,19 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.*
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
+
+data class RTLExperienceResult(
+    val success: Boolean,
+    val errorCode: String? = null
+)
+
+private enum class RTLExperienceError(val code: String) {
+    TOKEN_UNAVAILABLE("token_unavailable"),
+    WEBVIEW_NOT_CREATED("webview_not_created"),
+    INVALID_TOKEN_FORWARD_URL("invalid_token_forward_url"),
+    LOGIN_TIMEOUT("login_timeout"),
+    REQUEST_CANCELLED("request_cancelled")
+}
 
 /**
  * Main SDK singleton for RTL webview integration
@@ -79,7 +93,7 @@ class RTLSdk private constructor() {
         private set
 
     // Async login
-    private var loginContinuation: CancellableContinuation<Boolean>? = null
+    private var loginContinuation: CancellableContinuation<RTLExperienceResult>? = null
     private var loginTimeoutJob: Job? = null
 
     // Token management
@@ -113,25 +127,18 @@ class RTLSdk private constructor() {
      */
     var listener: RTLSdkListener? = null
 
-    /**
-     * Initialize the SDK with configuration
-     *
-     * @param program The program identifier (e.g., "crowdplay")
-     * @param environment The target environment (STAGING or PRODUCTION)
-     * @param urlScheme The app's URL scheme for deep linking
-     * @param context The Activity context
-     * @param externalChapterId The external chapter ID for location-based features (optional)
-     */
     fun initialize(
         program: String,
         environment: RTLEnvironment,
         urlScheme: String,
         context: Activity,
+        listener: RTLSdkListener?,
         externalChapterId: String? = null
     ) {
         this.program = program
         this.environment = environment
         this.urlScheme = urlScheme
+        this.listener = listener
         this.externalChapterId = externalChapterId
         this.application = context.application
         this.isInitialized = true
@@ -155,7 +162,7 @@ class RTLSdk private constructor() {
             return
         }
         Log.d(TAG, "Token expired, requesting fresh token...")
-        requestTokenAndLogin()
+        presentExperience()
     }
 
     /**
@@ -179,6 +186,7 @@ class RTLSdk private constructor() {
             throw IllegalStateException("RTLSdk not initialized. Call initialize() first.")
         }
         val webView = RTLWebView(context, this)
+        webView.visibility = View.INVISIBLE
         this.webView = webView
         return webView
     }
@@ -187,27 +195,27 @@ class RTLSdk private constructor() {
      * Request token from listener and perform login.
      * Called on initial webview show and when token expires.
      *
-     * @return true if login succeeded, false if failed or no token provided
+     * @return Result containing success state or a snake_case error code
      */
-    suspend fun requestTokenAndLogin(): Boolean {
+    suspend fun presentExperience(): RTLExperienceResult {
         val token = listener?.onNeedsToken()
         if (token == null) {
             Log.d(TAG, "Token requested but listener returned null")
-            return false
+            return rtlExperienceFailure(RTLExperienceError.TOKEN_UNAVAILABLE)
         }
         return login(token)
     }
 
     /**
-     * Async login that completes when userAuth message is received or times out
+     * Async login that completes when the RTL app is ready or times out.
      *
      * @param token JWT token from host app's auth system
-     * @return true if login succeeded (userAuth received), false if failed/timed out
+     * @return Result containing success state or a snake_case error code
      */
-    suspend fun login(token: String): Boolean {
+    suspend fun login(token: String): RTLExperienceResult {
         val webView = this.webView ?: run {
             println("[RTLSdk] Error: WebView not created. Call createWebView() first.")
-            return false
+            return rtlExperienceFailure(RTLExperienceError.WEBVIEW_NOT_CREATED)
         }
 
         // Cancel any existing login attempt
@@ -215,7 +223,7 @@ class RTLSdk private constructor() {
 
         val url = buildTokenForwardUrl(token) ?: run {
             println("[RTLSdk] Error: Failed to build token forward URL")
-            return false
+            return rtlExperienceFailure(RTLExperienceError.INVALID_TOKEN_FORWARD_URL)
         }
 
         return suspendCancellableCoroutine { continuation ->
@@ -224,7 +232,7 @@ class RTLSdk private constructor() {
             // Set up timeout
             loginTimeoutJob = CoroutineScope(Dispatchers.Main).launch {
                 delay(LOGIN_TIMEOUT_MS)
-                completeLogin(success = false)
+                completeLogin(result = rtlExperienceFailure(RTLExperienceError.LOGIN_TIMEOUT))
             }
 
             // Load the URL on main thread
@@ -468,19 +476,23 @@ class RTLSdk private constructor() {
     internal fun handleUserAuthReceived(accessToken: String, refreshToken: String) {
         _isLoggedIn = true
         lastTokenTimestamp = System.currentTimeMillis()
+        webView?.visibility = View.VISIBLE
         listener?.onAuthenticated(accessToken, refreshToken)
-        completeLogin(success = true)
+        completeLogin(result = rtlExperienceSuccess())
     }
 
     internal fun handleUserLogoutReceived() {
         _isLoggedIn = false
+        webView?.visibility = View.INVISIBLE
         listener?.onLogout()
     }
 
     internal fun handleAppReady() {
         Log.d(TAG, "Received appReady from webview")
         webviewIsReady = true
+        webView?.visibility = View.VISIBLE
         listener?.onReady()
+        completeLogin(result = rtlExperienceSuccess())
 
         // Send current location permission status to webview now that it's ready
         val extension = locationExtension
@@ -549,14 +561,16 @@ class RTLSdk private constructor() {
     private fun cancelPendingLogin() {
         loginTimeoutJob?.cancel()
         loginTimeoutJob = null
-        loginContinuation?.takeIf { it.isActive }?.resume(false)
+        loginContinuation?.takeIf { it.isActive }?.resume(
+            rtlExperienceFailure(RTLExperienceError.REQUEST_CANCELLED)
+        )
         loginContinuation = null
     }
 
-    private fun completeLogin(success: Boolean) {
+    private fun completeLogin(result: RTLExperienceResult) {
         loginTimeoutJob?.cancel()
         loginTimeoutJob = null
-        loginContinuation?.takeIf { it.isActive }?.resume(success)
+        loginContinuation?.takeIf { it.isActive }?.resume(result)
         loginContinuation = null
     }
 
@@ -604,4 +618,12 @@ class RTLSdk private constructor() {
      * @suppress This is an internal API for use by rtl-sdk-location module only.
      */
     val currentExternalChapterId: String? get() = externalChapterId
+}
+
+private fun rtlExperienceSuccess(): RTLExperienceResult {
+    return RTLExperienceResult(success = true)
+}
+
+private fun rtlExperienceFailure(error: RTLExperienceError): RTLExperienceResult {
+    return RTLExperienceResult(success = false, errorCode = error.code)
 }

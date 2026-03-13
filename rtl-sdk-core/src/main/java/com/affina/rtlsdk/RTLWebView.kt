@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.webkit.*
 import android.widget.FrameLayout
@@ -21,6 +23,7 @@ class RTLWebView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
     private val webView: WebView
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         webView = WebView(context).apply {
@@ -182,23 +185,25 @@ class RTLWebView @JvmOverloads constructor(
 
                 println("[RTLSdk] Message type: $type")
 
-                when (type) {
-                    "openExternalUrl" -> handleOpenExternalUrl(json)
-                    "userAuth" -> handleUserAuth(json)
-                    "userLogout" -> sdk?.handleUserLogoutReceived()
-                    "appReady" -> sdk?.handleAppReady()
-                    "locationPermissionRequest" -> {
-                        // Try to get activity from context
-                        val activity = context as? Activity
-                        sdk?.handleLocationPermissionRequest(activity)
-                    }
-                    "locationPermissionStatus",
-                    "locationUpdate" -> {
-                        // These are outgoing messages, not expected from web
-                        println("[RTLSdk] Unexpected incoming location message: $type")
-                    }
-                    else -> {
-                        println("[RTLSdk] Unknown message type: $type")
+                mainHandler.post {
+                    when (type) {
+                        "openExternalUrl" -> handleOpenExternalUrl(json)
+                        "userAuth" -> handleUserAuth(json)
+                        "userLogout" -> sdk?.handleUserLogoutReceived()
+                        "appReady" -> sdk?.handleAppReady()
+                        "locationPermissionRequest" -> {
+                            // Try to get activity from context
+                            val activity = context as? Activity
+                            sdk?.handleLocationPermissionRequest(activity)
+                        }
+                        "locationPermissionStatus",
+                        "locationUpdate" -> {
+                            // These are outgoing messages, not expected from web
+                            println("[RTLSdk] Unexpected incoming location message: $type")
+                        }
+                        else -> {
+                            println("[RTLSdk] Unknown message type: $type")
+                        }
                     }
                 }
             } catch (e: Exception) {

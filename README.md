@@ -65,25 +65,21 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
             program = "your-program-id",
             environment = RTLEnvironment.STAGING,
             urlScheme = "your-app-scheme",
-            context = this
+            context = this,
+            listener = this
         )
 
-        // 2. Set listener BEFORE creating webview
-        RTLSdk.getInstance().listener = this
-
-        // 3. Create and add webview
+        // 2. Create and add webview
         val webView = RTLSdk.getInstance().createWebView(this)
         webViewContainer.addView(webView)
         rtlWebView = webView
     }
 
-    fun onLoginButtonClicked() {
+    fun onShowExperienceClicked() {
         lifecycleScope.launch {
-            // 4. Request token and login
-            val success = RTLSdk.getInstance().requestTokenAndLogin()
-            if (success) {
-                // Show webview, hide login UI
-                webViewContainer.visibility = View.VISIBLE
+            val result = RTLSdk.getInstance().presentExperience()
+            if (!result.success) {
+                Log.d("RTL", result.errorCode ?: "unknown_error")
             }
         }
     }
@@ -93,10 +89,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     override suspend fun onNeedsToken(): String? {
         // Return JWT token from your auth system
         return MyAuthService.getToken()
-    }
-
-    override fun onAuthenticated(accessToken: String, refreshToken: String) {
-        Log.d("RTL", "Authenticated!")
     }
 
     override fun onLogout() {}
@@ -109,26 +101,19 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
 
 ### Step 1: Initialize the SDK
 
-Initialize the SDK early in your app's lifecycle, typically in `onCreate()`:
+Initialize the SDK early in your app's lifecycle, typically in `onCreate()`. Pass the listener at initialization time to ensure no callbacks are missed:
 
 ```kotlin
 RTLSdk.getInstance().initialize(
     program = "your-program-id",    // Your RTL program identifier
     environment = RTLEnvironment.STAGING,  // STAGING or PRODUCTION
     urlScheme = "your-app-scheme",  // Your app's URL scheme for deep linking
-    context = this                   // Activity context
+    context = this,                  // Activity context
+    listener = this                  // Set listener immediately
 )
 ```
 
-### Step 2: Set the Listener
-
-Set the listener **before** creating the webview. This is important because the SDK may immediately request a token.
-
-```kotlin
-RTLSdk.getInstance().listener = this
-```
-
-### Step 3: Create the WebView
+### Step 2: Create the WebView
 
 Create the RTL webview and add it to your view hierarchy:
 
@@ -146,9 +131,11 @@ Layout XML example:
     android:fitsSystemWindows="true" />
 ```
 
-### Step 4: Implement Token Provider
+### Step 3: Implement Token Provider
 
 Implement `onNeedsToken()` to provide tokens when the SDK needs them:
+
+> `onNeedsToken()` should call your backend endpoint to fetch a freshly signed JWT. Do not generate or sign JWTs inside the mobile app.
 
 ```kotlin
 override suspend fun onNeedsToken(): String? {
@@ -163,22 +150,23 @@ override suspend fun onNeedsToken(): String? {
 ```
 
 This method is called:
-- When you call `requestTokenAndLogin()`
+- When you call `presentExperience()`
 - Automatically when the app returns to foreground after 20+ hours (token refresh)
 
-### Step 5: Trigger Login
+### Step 4: Present the Experience
 
 When the user is ready to access the RTL experience:
 
 ```kotlin
 lifecycleScope.launch {
-    val success = RTLSdk.getInstance().requestTokenAndLogin()
-    if (success) {
-        // Show the webview, hide login UI
-        webViewContainer.visibility = View.VISIBLE
-    } else {
-        // Handle login failure
-        Toast.makeText(this@MainActivity, "Login failed", Toast.LENGTH_SHORT).show()
+    val result = RTLSdk.getInstance().presentExperience()
+    if (!result.success) {
+        // Handle failure by error code, e.g. "token_unavailable"
+        Toast.makeText(
+            this@MainActivity,
+            result.errorCode ?: "unknown_error",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }
 ```
@@ -204,7 +192,7 @@ Returns the singleton instance of RTLSdk.
 fun getInstance(): RTLSdk
 ```
 
-##### `initialize(program, environment, urlScheme, context)`
+##### `initialize(program, environment, urlScheme, context, listener)`
 Initialize the SDK with configuration. Must be called before any other SDK methods.
 
 ```kotlin
@@ -212,7 +200,8 @@ fun initialize(
     program: String,
     environment: RTLEnvironment,
     urlScheme: String,
-    context: Activity
+    context: Activity,
+    listener: RTLSdkListener?
 )
 ```
 
@@ -222,6 +211,7 @@ fun initialize(
 | `environment` | `RTLEnvironment` | `STAGING` or `PRODUCTION` |
 | `urlScheme` | `String` | Your app's URL scheme for deep linking |
 | `context` | `Activity` | Activity context for initialization |
+| `listener` | `RTLSdkListener?` | Listener for receiving SDK events |
 
 ##### `createWebView(context)`
 Creates and returns an RTL webview to embed in your view hierarchy.
@@ -230,27 +220,43 @@ Creates and returns an RTL webview to embed in your view hierarchy.
 fun createWebView(context: Context): RTLWebView
 ```
 
-##### `requestTokenAndLogin()`
-Requests a token from the listener and performs login. This is the recommended way to initiate login.
+##### `presentExperience()`
+Requests a token from the listener, authenticates, and presents the RTL experience.
 
 ```kotlin
-suspend fun requestTokenAndLogin(): Boolean
+suspend fun presentExperience(): RTLExperienceResult
 ```
 
-**Returns:** `true` if login succeeded, `false` if failed or no token provided.
+**Returns:** `RTLExperienceResult` with `success == true` on success, or `errorCode` set to a snake_case failure code.
 
 ##### `login(token)`
-Performs login with a provided JWT token. Consider using `requestTokenAndLogin()` instead.
+Performs login with a provided JWT token. Consider using `presentExperience()` instead.
 
 ```kotlin
-suspend fun login(token: String): Boolean
+suspend fun login(token: String): RTLExperienceResult
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `token` | `String` | JWT token from your authentication system |
 
-**Returns:** `true` if login succeeded (userAuth received), `false` if failed/timed out (30 seconds).
+**Returns:** `RTLExperienceResult` with `success == true` if the RTL app finished loading, otherwise `errorCode` explains the failure.
+
+### RTLExperienceResult
+
+Return type for `presentExperience()` and `login(token)`.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `success` | `Boolean` | `true` when the experience was presented successfully |
+| `errorCode` | `String?` | Snake_case failure code, or `null` on success |
+
+Known `errorCode` values:
+- `token_unavailable`
+- `webview_not_created`
+- `invalid_token_forward_url`
+- `login_timeout`
+- `request_cancelled`
 
 ##### `logout()`
 Triggers logout in the webview.
@@ -278,9 +284,6 @@ interface RTLSdkListener {
     /** Called when SDK needs a token (initial login or refresh) */
     suspend fun onNeedsToken(): String?
 
-    /** Called when authentication succeeds */
-    fun onAuthenticated(accessToken: String, refreshToken: String)
-
     /** Called when user logs out */
     fun onLogout()
 
@@ -297,9 +300,8 @@ interface RTLSdkListener {
 | Method | Description |
 |--------|-------------|
 | `onNeedsToken()` | **Required for login.** Return a JWT token or `null` if unavailable. |
-| `onAuthenticated(accessToken, refreshToken)` | Called when user successfully authenticates. |
 | `onLogout()` | Called when user logs out. |
-| `onOpenUrl(url, forceExternal)` | Called when RTL requests to open a URL. Open in browser if `forceExternal` is true. |
+| `onOpenUrl(url, forceExternal)` | Called after SDK opens a URL (informational). |
 | `onReady()` | Called when the RTL web app has finished loading. |
 
 ### RTLSdkListenerAdapter
@@ -310,10 +312,6 @@ Adapter class with default empty implementations for all listener methods. Exten
 class MyListener : RTLSdkListenerAdapter() {
     override suspend fun onNeedsToken(): String? {
         return myAuthService.getToken()
-    }
-
-    override fun onAuthenticated(accessToken: String, refreshToken: String) {
-        Log.d("RTL", "Authenticated!")
     }
 }
 ```
@@ -348,6 +346,7 @@ The SDK automatically manages token expiration:
 - Tokens are considered valid for **20 hours**
 - When the app returns to foreground after 20+ hours, the SDK automatically calls `onNeedsToken()` to get a fresh token
 - The webview is automatically reloaded with the new token
+- The SDK keeps the webview hidden until `presentExperience()` succeeds, and hides it again on logout
 
 This ensures users always have a valid session without manual intervention.
 
@@ -569,4 +568,3 @@ ViewCompat.setOnApplyWindowInsetsListener(webViewContainer) { view, windowInsets
     WindowInsetsCompat.CONSUMED
 }
 ```
-
