@@ -1,5 +1,6 @@
 package com.affina.rtlsdk.example.location
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -14,16 +15,22 @@ import com.affina.rtlsdk.RTLEnvironment
 import com.affina.rtlsdk.RTLSdk
 import com.affina.rtlsdk.RTLSdkListener
 import com.affina.rtlsdk.RTLStore
-import com.affina.rtlsdk.RTLWebView
 import com.affina.rtlsdk.location.RTLLocationModule
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), RTLSdkListener {
 
+    private data class RTLDeepLinkContext(
+        val rtlEventId: String?,
+        val rtlRedirectUrl: String?
+    )
+
     private lateinit var statusText: TextView
     private lateinit var loginButton: Button
     private lateinit var webViewContainer: FrameLayout
-    private var rtlWebView: RTLWebView? = null
+    private val appScheme = "rtlsdkexample"
+    private val rtlDeepLinkHost = "rtlsdk"
+    private val rtlActionType = "rtlSdk"
 
     // Test token - in a real app, this would come from your authentication system
     private val testToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiMmIwMzBhMzYtYWQyMS0xMjIyLTEyMzItYzViZjg5OGQxN2IxIiwiZ2VuZGVyIjoiRmVtYWxlIiwiZmlyc3ROYW1lIjoiRXJpY2thIiwibGFzdE5hbWUiOiJOIiwiZW1haWwiOiJsZXZvbmFsdkBnZXRib29uLmNvbSJ9LCJvcmdJZCI6ImNrcDluM2Q4eTAwNjNrc3V2Y2hjNndmZ3QiLCJjaGFwdGVySWQiOiJjMzIwNDdiNC01ZDk5LTQ1MDUtYjczMy03MWYxZmRlNGU1NzAiLCJwb2ludHNQZXJEb2xsYXIiOjIwMCwiaWF0IjoxNzU0MzA3MDg0LCJleHAiOjE4NDkwMzMwMDJ9.3yTQC0bEeiogdHd4qM_Wh8bRnY_aQ9F9ngk5QUF_CF8"
@@ -46,6 +53,9 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         }
 
         initializeSDK()
+        if (savedInstanceState == null) {
+            handleEntryIntent(intent)
+        }
     }
 
     private fun initializeSDK() {
@@ -65,17 +75,53 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         // Create webview (the SDK manages its visibility)
         val webView = RTLSdk.getInstance().createWebView(this)
         webViewContainer.addView(webView)
-        rtlWebView = webView
 
         statusText.text = "Tap Login to continue"
     }
 
     private fun onLoginClicked() {
-        statusText.text = "Logging in..."
+        launchExperience("Logging in...")
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleEntryIntent(intent)
+    }
+
+    private fun handleEntryIntent(intent: Intent?) {
+        val rtlPushEventId = parseRTLPushEventId(intent)
+        if (rtlPushEventId != null) {
+            launchExperience(
+                statusMessage = "Opening RTL experience from push...",
+                rtlEventId = rtlPushEventId
+            )
+            return
+        }
+
+        val deepLinkContext = parseRTLDeepLink(intent)
+        if (deepLinkContext != null) {
+            launchExperience(
+                statusMessage = "Opening RTL experience...",
+                rtlEventId = deepLinkContext.rtlEventId,
+                rtlRedirectUrl = deepLinkContext.rtlRedirectUrl
+            )
+        }
+    }
+
+    private fun launchExperience(
+        statusMessage: String,
+        rtlEventId: String? = null,
+        rtlRedirectUrl: String? = null
+    ) {
+        statusText.text = statusMessage
         loginButton.isEnabled = false
 
         lifecycleScope.launch {
-            val result = RTLSdk.getInstance().presentExperience()
+            val result = RTLSdk.getInstance().presentExperience(
+                rtlEventId = rtlEventId,
+                rtlRedirectUrl = rtlRedirectUrl
+            )
 
             runOnUiThread {
                 if (result.success) {
@@ -91,6 +137,37 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         }
     }
 
+    private fun parseRTLDeepLink(intent: Intent?): RTLDeepLinkContext? {
+        val data = intent?.data ?: return null
+        if (data.scheme?.lowercase() != appScheme || data.host?.lowercase() != rtlDeepLinkHost) {
+            return null
+        }
+
+        return RTLDeepLinkContext(
+            rtlEventId = data.getQueryParameter("rtlEventId"),
+            rtlRedirectUrl = data.getQueryParameter("rtlRedirectUrl")
+        )
+    }
+
+    private fun parseRTLPushEventId(intent: Intent?): String? {
+        val extras = intent?.extras ?: return null
+
+        val topLevelActionType = extras.getString("rtlActionType")
+        val topLevelEventId = extras.getString("rtlEventId")
+        if (topLevelActionType == rtlActionType && !topLevelEventId.isNullOrEmpty()) {
+            return topLevelEventId
+        }
+
+        val metadata = extras.getBundle("metadata")
+        val metadataActionType = metadata?.getString("rtlActionType")
+        val metadataEventId = metadata?.getString("rtlEventId")
+        if (metadataActionType == rtlActionType && !metadataEventId.isNullOrEmpty()) {
+            return metadataEventId
+        }
+
+        return null
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -102,10 +179,6 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     }
 
     // RTLSdkListener implementation
-
-    override fun onAuthenticated(accessToken: String, refreshToken: String) {
-        Log.d("RTLExample", "Authenticated! Access token: ${accessToken.take(20)}...")
-    }
 
     override fun onLogout() {
         Log.d("RTLExample", "User logged out")
