@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.Intent
 import android.location.Location
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -197,22 +196,35 @@ class RTLSdk private constructor() {
      *
      * @return Result containing success state or a snake_case error code
      */
-    suspend fun presentExperience(): RTLExperienceResult {
+    suspend fun presentExperience(
+        rtlEventId: String? = null,
+        rtlRedirectUrl: String? = null
+    ): RTLExperienceResult {
         val token = listener?.onNeedsToken()
         if (token == null) {
             Log.d(TAG, "Token requested but listener returned null")
             return rtlExperienceFailure(RTLExperienceError.TOKEN_UNAVAILABLE)
         }
-        return login(token)
+        return login(
+            token = token,
+            rtlEventId = rtlEventId,
+            rtlRedirectUrl = rtlRedirectUrl
+        )
     }
 
     /**
      * Async login that completes when the RTL app is ready or times out.
      *
      * @param token JWT token from host app's auth system
+     * @param rtlEventId Optional RTL event identifier supplied by the host app
+     * @param rtlRedirectUrl Optional redirect URL supplied by the host app
      * @return Result containing success state or a snake_case error code
      */
-    suspend fun login(token: String): RTLExperienceResult {
+    suspend fun login(
+        token: String,
+        rtlEventId: String? = null,
+        rtlRedirectUrl: String? = null
+    ): RTLExperienceResult {
         val webView = this.webView ?: run {
             println("[RTLSdk] Error: WebView not created. Call createWebView() first.")
             return rtlExperienceFailure(RTLExperienceError.WEBVIEW_NOT_CREATED)
@@ -221,7 +233,11 @@ class RTLSdk private constructor() {
         // Cancel any existing login attempt
         cancelPendingLogin()
 
-        val url = buildTokenForwardUrl(token) ?: run {
+        val url = buildTokenForwardUrl(
+            token = token,
+            rtlEventId = rtlEventId,
+            rtlRedirectUrl = rtlRedirectUrl
+        ) ?: run {
             println("[RTLSdk] Error: Failed to build token forward URL")
             return rtlExperienceFailure(RTLExperienceError.INVALID_TOKEN_FORWARD_URL)
         }
@@ -574,7 +590,11 @@ class RTLSdk private constructor() {
         loginContinuation = null
     }
 
-    private fun buildTokenForwardUrl(token: String): String? {
+    private fun buildTokenForwardUrl(
+        token: String,
+        rtlEventId: String?,
+        rtlRedirectUrl: String?
+    ): String? {
         val program = this.program ?: return null
         val environment = this.environment ?: return null
         val urlScheme = this.urlScheme ?: return null
@@ -595,6 +615,14 @@ class RTLSdk private constructor() {
             append(java.net.URLEncoder.encode(program, "UTF-8"))
             append("&appScheme=")
             append(java.net.URLEncoder.encode(urlScheme, "UTF-8"))
+            if (!rtlEventId.isNullOrEmpty()) {
+                append("&rtlEventId=")
+                append(java.net.URLEncoder.encode(rtlEventId, "UTF-8"))
+            }
+            if (!rtlRedirectUrl.isNullOrEmpty()) {
+                append("&rtlRedirectUrl=")
+                append(java.net.URLEncoder.encode(rtlRedirectUrl, "UTF-8"))
+            }
         }
     }
 
