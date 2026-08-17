@@ -5,6 +5,11 @@ package com.affina.rtlsdk
  */
 enum class RTLEnvironment {
     /**
+     * Development environment (*-dev.staging.getboon.com)
+     */
+    DEVELOPMENT,
+
+    /**
      * Staging environment (*.staging.getboon.com)
      */
     STAGING,

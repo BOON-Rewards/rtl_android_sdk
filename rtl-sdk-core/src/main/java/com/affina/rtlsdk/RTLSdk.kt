@@ -6,11 +6,13 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.Intent
 import android.location.Location
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -79,6 +81,11 @@ class RTLSdk private constructor() {
      * @suppress This is an internal API for use by rtl-sdk-location module only.
      */
     var locationExtension: RTLLocationExtension? = null
+
+    /**
+     * Optional hook for wrapper SDKs that need to own Android permission requests.
+     */
+    var permissionRequester: RTLSdkPermissionRequester? = null
 
     // Webview state for location features
     private var webviewAwaitingPermissionResponse = false
@@ -369,6 +376,22 @@ class RTLSdk private constructor() {
         return locationExtension?.handlePermissionResult(requestCode, permissions, grantResults) ?: false
     }
 
+    /**
+     * Request Android runtime permissions.
+     *
+     * Wrappers can provide [permissionRequester] to route this through their own
+     * activity/delegate permission APIs. Native Android apps fall back to
+     * ActivityCompat and should forward permission results to [handlePermissionResult].
+     */
+    fun requestPermissions(
+        activity: Activity,
+        permissions: Array<String>,
+        requestCode: Int
+    ) {
+        permissionRequester?.requestPermissions(activity, permissions, requestCode)
+            ?: ActivityCompat.requestPermissions(activity, permissions, requestCode)
+    }
+
     // MARK: - Location Messaging (for location extension)
 
     /**
@@ -600,6 +623,7 @@ class RTLSdk private constructor() {
         val urlScheme = this.urlScheme ?: return null
 
         val domain = when (environment) {
+            RTLEnvironment.DEVELOPMENT -> "$program-dev.staging.getboon.com"
             RTLEnvironment.STAGING -> "$program.staging.getboon.com"
             RTLEnvironment.PRODUCTION -> "$program.prod.getboon.com"
         }

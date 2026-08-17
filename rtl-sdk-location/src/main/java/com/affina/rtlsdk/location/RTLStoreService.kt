@@ -32,6 +32,7 @@ internal class RTLStoreService(
         return withContext(Dispatchers.IO) {
             try {
                 val domain = when (environment) {
+                    RTLEnvironment.DEVELOPMENT -> "$program-dev.staging.getboon.com"
                     RTLEnvironment.STAGING -> "$program.staging.getboon.com"
                     RTLEnvironment.PRODUCTION -> "$program.prod.getboon.com"
                 }
