@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
 import android.os.Looper
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.affina.rtlsdk.RTLSdk
 import com.google.android.gms.location.*
@@ -104,7 +103,7 @@ internal class RTLLocationManager(
             println("[$TAG] Requesting foreground location permission...")
             pendingBackgroundRequest = true
 
-            ActivityCompat.requestPermissions(
+            sdk.requestPermissions(
                 activity,
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -135,7 +134,7 @@ internal class RTLLocationManager(
     private fun requestBackgroundPermission(activity: Activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             println("[$TAG] Requesting background location permission...")
-            ActivityCompat.requestPermissions(
+            sdk.requestPermissions(
                 activity,
                 arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
                 BACKGROUND_LOCATION_PERMISSION_REQUEST_CODE
@@ -210,7 +209,7 @@ internal class RTLLocationManager(
     private fun requestNotificationPermission(activity: Activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             println("[$TAG] Requesting notification permission...")
-            ActivityCompat.requestPermissions(
+            sdk.requestPermissions(
                 activity,
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 NOTIFICATION_PERMISSION_REQUEST_CODE
