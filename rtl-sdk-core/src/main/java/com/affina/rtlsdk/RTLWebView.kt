@@ -139,12 +139,7 @@ class RTLWebView @JvmOverloads constructor(
                 return false
             }
 
-            // Check for allowed domains
-            val host = request.url?.host ?: ""
-            val isAllowedDomain = host.contains("getboon.com") ||
-                    host.contains("affinaloyalty.com")
-
-            return if (isAllowedDomain) {
+            return if (sdk?.isAllowedWebUrl(request.url) == true) {
                 false // Allow loading
             } else {
                 // External URL - notify listener

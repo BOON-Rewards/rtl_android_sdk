@@ -48,7 +48,7 @@ object RTLLocationModule : RTLLocationExtension {
      * Usage:
      * ```
      * // After SDK initialization
-     * RTLSdk.getInstance().initialize(program, environment, urlScheme, activity)
+     * RTLSdk.getInstance().initialize(baseUrl, urlScheme, activity)
      *
      * // Install location module
      * RTLLocationModule.install(RTLSdk.getInstance())
@@ -70,10 +70,9 @@ object RTLLocationModule : RTLLocationExtension {
         this.sdk = sdk
         this.context = activity.applicationContext
 
-        val program = sdk.currentProgram
-        val environment = sdk.currentEnvironment
+        val baseUrl = sdk.currentBaseUrl
 
-        if (program == null || environment == null) {
+        if (baseUrl == null) {
             Log.w(TAG, "Cannot enable: SDK not initialized")
             return
         }
@@ -86,7 +85,7 @@ object RTLLocationModule : RTLLocationExtension {
         Log.d(TAG, "Enabling location features...")
 
         // Initialize managers
-        storeService = RTLStoreService(program, environment, sdk.currentExternalChapterId)
+        storeService = RTLStoreService(baseUrl, sdk.currentExternalChapterId)
         notificationManager = RTLNotificationManager(activity.applicationContext)
         geofenceManager = RTLGeofenceManager(activity.applicationContext)
         locationManager = RTLLocationManager(activity.applicationContext, sdk)
