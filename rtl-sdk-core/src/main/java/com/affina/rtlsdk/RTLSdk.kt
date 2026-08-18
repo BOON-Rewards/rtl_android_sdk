@@ -59,8 +59,7 @@ class RTLSdk private constructor() {
     }
 
     // Configuration
-    private var program: String? = null
-    private var environment: RTLEnvironment? = null
+    private var baseUrl: Uri? = null
     private var urlScheme: String? = null
     private var externalChapterId: String? = null
     internal var application: Application? = null
@@ -134,15 +133,20 @@ class RTLSdk private constructor() {
     var listener: RTLSdkListener? = null
 
     fun initialize(
-        program: String,
-        environment: RTLEnvironment,
+        baseUrl: String,
         urlScheme: String,
         context: Activity,
         listener: RTLSdkListener?,
         externalChapterId: String? = null
     ) {
-        this.program = program
-        this.environment = environment
+        val parsedBaseUrl = Uri.parse(baseUrl)
+        require(
+            (parsedBaseUrl.scheme.equals("https", ignoreCase = true) ||
+                parsedBaseUrl.scheme.equals("http", ignoreCase = true)) &&
+                !parsedBaseUrl.host.isNullOrBlank()
+        ) { "baseUrl must be a complete HTTP(S) URL" }
+
+        this.baseUrl = parsedBaseUrl
         this.urlScheme = urlScheme
         this.listener = listener
         this.externalChapterId = externalChapterId
@@ -618,51 +622,52 @@ class RTLSdk private constructor() {
         rtlEventId: String?,
         rtlRedirectUrl: String?
     ): String? {
-        val program = this.program ?: return null
-        val environment = this.environment ?: return null
+        val baseUrl = this.baseUrl ?: return null
         val urlScheme = this.urlScheme ?: return null
 
-        val domain = when (environment) {
-            RTLEnvironment.DEVELOPMENT -> "$program-dev.staging.getboon.com"
-            RTLEnvironment.STAGING -> "$program.staging.getboon.com"
-            RTLEnvironment.PRODUCTION -> "$program.prod.getboon.com"
-        }
+        return baseUrl.buildUpon()
+            .path("/auth/token-forward")
+            .clearQuery()
+            .fragment(null)
+            .appendQueryParameter("token", token)
+            .appendQueryParameter("isWrappedMobileApp", "true")
+            .appendQueryParameter("appScheme", urlScheme)
+            .apply {
+                if (!rtlEventId.isNullOrEmpty()) {
+                    appendQueryParameter("rtlEventId", rtlEventId)
+                }
+                if (!rtlRedirectUrl.isNullOrEmpty()) {
+                    appendQueryParameter("rtlRedirectUrl", rtlRedirectUrl)
+                }
+            }
+            .build()
+            .toString()
+    }
 
-        return buildString {
-            append("https://")
-            append(domain)
-            append("/auth/token-forward")
-            append("?token=")
-            append(java.net.URLEncoder.encode(token, "UTF-8"))
-            append("&isWrappedMobileApp=true")
-            append("&embeddedProgramId=")
-            append(java.net.URLEncoder.encode(program, "UTF-8"))
-            append("&appScheme=")
-            append(java.net.URLEncoder.encode(urlScheme, "UTF-8"))
-            if (!rtlEventId.isNullOrEmpty()) {
-                append("&rtlEventId=")
-                append(java.net.URLEncoder.encode(rtlEventId, "UTF-8"))
-            }
-            if (!rtlRedirectUrl.isNullOrEmpty()) {
-                append("&rtlRedirectUrl=")
-                append(java.net.URLEncoder.encode(rtlRedirectUrl, "UTF-8"))
-            }
+    internal fun isAllowedWebUrl(url: Uri): Boolean {
+        val configuredUrl = baseUrl ?: return false
+        return configuredUrl.scheme.equals(url.scheme, ignoreCase = true) &&
+            configuredUrl.host.equals(url.host, ignoreCase = true) &&
+            effectivePort(configuredUrl) == effectivePort(url)
+    }
+
+    private fun effectivePort(url: Uri): Int {
+        if (url.port != -1) {
+            return url.port
+        }
+        return when (url.scheme?.lowercase()) {
+            "http" -> 80
+            "https" -> 443
+            else -> -1
         }
     }
 
     /**
-     * Current program identifier.
+     * Current configured base URL.
      *
      * @suppress This is an internal API for use by rtl-sdk-location module only.
      */
-    val currentProgram: String? get() = program
-
-    /**
-     * Current environment.
-     *
-     * @suppress This is an internal API for use by rtl-sdk-location module only.
-     */
-    val currentEnvironment: RTLEnvironment? get() = environment
+    val currentBaseUrl: String? get() = baseUrl?.toString()
 
     /**
      * Current external chapter ID.

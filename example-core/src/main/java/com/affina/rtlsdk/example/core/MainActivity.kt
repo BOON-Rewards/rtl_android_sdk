@@ -11,7 +11,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import com.affina.rtlsdk.RTLEnvironment
 import com.affina.rtlsdk.RTLSdk
 import com.affina.rtlsdk.RTLSdkListener
 import com.affina.rtlsdk.RTLStore
@@ -67,8 +66,7 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     private fun initializeSDK() {
         // Initialize the SDK (core only - no location module)
         RTLSdk.getInstance().initialize(
-            program = "crowdplay",
-            environment = RTLEnvironment.STAGING,
+            baseUrl = "https://client-provided-url.example",
             urlScheme = "rtlsdkcoreexample",
             context = this,
             listener = this

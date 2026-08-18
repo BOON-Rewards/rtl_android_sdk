@@ -1,6 +1,6 @@
 package com.affina.rtlsdk.location
 
-import com.affina.rtlsdk.RTLEnvironment
+import android.net.Uri
 import com.affina.rtlsdk.RTLStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,10 +12,11 @@ import java.net.URL
  * Service for fetching nearby stores from the RTL API
  */
 internal class RTLStoreService(
-    private val program: String,
-    private val environment: RTLEnvironment,
+    baseUrl: String,
     private val externalChapterId: String?
 ) {
+    private val baseUrl = Uri.parse(baseUrl)
+
     companion object {
         private const val API_KEY = "2F7ZqPuvDr0LBtjqJQpNJKWA8FqkKAbJ"
         private const val TAG = "RTLStoreService"
@@ -31,16 +32,19 @@ internal class RTLStoreService(
     suspend fun fetchNearbyStores(latitude: Double, longitude: Double): List<RTLStore> {
         return withContext(Dispatchers.IO) {
             try {
-                val domain = when (environment) {
-                    RTLEnvironment.DEVELOPMENT -> "$program-dev.staging.getboon.com"
-                    RTLEnvironment.STAGING -> "$program.staging.getboon.com"
-                    RTLEnvironment.PRODUCTION -> "$program.prod.getboon.com"
-                }
-
-                var urlString = "https://$domain/api/rest/cp/stores/nearby?lat=$latitude&long=$longitude"
-                externalChapterId?.let {
-                    urlString += "&externalChapterId=$it"
-                }
+                val urlString = baseUrl.buildUpon()
+                    .path("/api/rest/cp/stores/nearby")
+                    .clearQuery()
+                    .fragment(null)
+                    .appendQueryParameter("lat", latitude.toString())
+                    .appendQueryParameter("long", longitude.toString())
+                    .apply {
+                        externalChapterId?.let {
+                            appendQueryParameter("externalChapterId", it)
+                        }
+                    }
+                    .build()
+                    .toString()
 
                 val url = URL(urlString)
                 println("[$TAG] Fetching nearby stores from: $urlString")
