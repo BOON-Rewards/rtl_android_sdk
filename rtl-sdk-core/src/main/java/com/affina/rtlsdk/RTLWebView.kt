@@ -3,13 +3,21 @@ package com.affina.rtlsdk
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.webkit.*
 import android.widget.FrameLayout
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.webkit.JavaScriptReplyProxy
+import androidx.webkit.WebMessageCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import java.net.URI
 
 /**
  * Embeddable webview for RTL experience
@@ -23,7 +31,13 @@ class RTLWebView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
     private val webView: WebView
+    private val refreshLayout: SwipeRefreshLayout
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val hapticEngine = RTLHapticEngine(context)
+    private val allowedOriginRules = sdk?.currentBaseUrl
+        ?.let(::webMessageOriginRule)
+        ?.let(::setOf)
+        .orEmpty()
 
     init {
         webView = WebView(context).apply {
@@ -55,12 +69,44 @@ class RTLWebView @JvmOverloads constructor(
 
             webViewClient = RTLWebViewClient()
             webChromeClient = WebChromeClient()
-
-            // Add JavaScript interface for message passing
-            addJavascriptInterface(RTLJavaScriptInterface(), "inappwebview")
         }
 
-        addView(webView)
+        installJavaScriptBridge()
+
+        refreshLayout = SwipeRefreshLayout(context).apply {
+            layoutParams = LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT
+            )
+            setColorSchemeColors(Color.rgb(238, 238, 238))
+            setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
+            setOnChildScrollUpCallback { _, _ ->
+                webView.canScrollVertically(-1)
+            }
+            setOnRefreshListener {
+                val currentUrl = webView.url
+                if (currentUrl.isNullOrBlank() || currentUrl == "about:blank") {
+                    isRefreshing = false
+                } else {
+                    webView.reload()
+                }
+            }
+        }
+
+        if (allowedOriginRules.isNotEmpty() &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                nativeCapabilitiesScript(),
+                allowedOriginRules
+            )
+        }
+
+        refreshLayout.addView(
+            webView,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        )
+        addView(refreshLayout)
     }
 
     /**
@@ -108,6 +154,16 @@ class RTLWebView @JvmOverloads constructor(
      */
     fun canGoForward(): Boolean = webView.canGoForward()
 
+    override fun onDetachedFromWindow() {
+        hapticEngine.cancel()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != VISIBLE) hapticEngine.cancel()
+    }
+
     /**
      * Post a message to the web content via window.postMessage
      *
@@ -150,6 +206,8 @@ class RTLWebView @JvmOverloads constructor(
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
+            finishPullToRefresh()
+            injectNativeCapabilities(view)
             println("[RTLSdk] WebView finished loading: $url")
         }
 
@@ -159,83 +217,164 @@ class RTLWebView @JvmOverloads constructor(
             error: WebResourceError?
         ) {
             super.onReceivedError(view, request, error)
+            if (request?.isForMainFrame != false) finishPullToRefresh()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 println("[RTLSdk] WebView error: ${error?.description}")
             }
         }
+
+        override fun onRenderProcessGone(
+            view: WebView?,
+            detail: RenderProcessGoneDetail?
+        ): Boolean {
+            finishPullToRefresh()
+            return super.onRenderProcessGone(view, detail)
+        }
     }
 
-    /**
-     * JavaScript interface for receiving messages from the web app
-     */
-    private inner class RTLJavaScriptInterface {
+    private fun finishPullToRefresh() {
+        refreshLayout.isRefreshing = false
+    }
 
-        @JavascriptInterface
-        fun postMessage(message: String) {
-            println("[RTLSdk] Received message: $message")
+    private fun installJavaScriptBridge() {
+        if (allowedOriginRules.isEmpty()) {
+            println("[RTLSdk] JavaScript bridge disabled: no trusted web origin configured")
+            return
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            println("[RTLSdk] JavaScript bridge disabled: the installed WebView is too old")
+            return
+        }
 
-            try {
-                val json = JSONObject(message)
-                val type = json.optString("type", "")
-
-                println("[RTLSdk] Message type: $type")
-
-                mainHandler.post {
-                    when (type) {
-                        "openExternalUrl" -> handleOpenExternalUrl(json)
-                        "userAuth" -> handleUserAuth(json)
-                        "userLogout" -> sdk?.handleUserLogoutReceived()
-                        "appReady" -> sdk?.handleAppReady()
-                        "locationPermissionRequest" -> {
-                            // Try to get activity from context
-                            val activity = context as? Activity
-                            sdk?.handleLocationPermissionRequest(activity)
-                        }
-                        "locationPermissionStatus",
-                        "locationUpdate" -> {
-                            // These are outgoing messages, not expected from web
-                            println("[RTLSdk] Unexpected incoming location message: $type")
-                        }
-                        else -> {
-                            println("[RTLSdk] Unknown message type: $type")
-                        }
+        WebViewCompat.addWebMessageListener(
+            webView,
+            "inappwebview",
+            allowedOriginRules,
+            object : WebViewCompat.WebMessageListener {
+                override fun onPostMessage(
+                    view: WebView,
+                    message: WebMessageCompat,
+                    sourceOrigin: Uri,
+                    isMainFrame: Boolean,
+                    replyProxy: JavaScriptReplyProxy
+                ) {
+                    if (!isMainFrame || sdk?.isAllowedWebUrl(sourceOrigin) != true) {
+                        println("[RTLSdk] Ignoring bridge message from an untrusted frame")
+                        return
                     }
+                    message.data?.let(::handleBridgeMessage)
                 }
-            } catch (e: Exception) {
-                println("[RTLSdk] Error parsing message: ${e.message}")
             }
-        }
+        )
+    }
 
-        private fun handleOpenExternalUrl(json: JSONObject) {
-            val url = json.optString("URL", "")
-            if (url.isEmpty()) {
-                println("[RTLSdk] Invalid URL in openExternalUrl message")
-                return
-            }
+    private fun handleBridgeMessage(message: String) {
+        println("[RTLSdk] Received message: $message")
 
-            val forceExternal = when (val value = json.opt("forceExternalBrowser")) {
-                is Boolean -> value
-                is String -> value.equals("true", ignoreCase = true)
-                else -> false
+        try {
+            val json = JSONObject(message)
+            val type = json.optString("type", "")
+            val hapticPattern = if (type == "haptic.play") {
+                RTLHapticBridgeMessage.parse(message)
+            } else {
+                null
             }
 
-            sdk?.handleOpenUrl(url, forceExternal)
-        }
+            println("[RTLSdk] Message type: $type")
 
-        private fun handleUserAuth(json: JSONObject) {
-            // Accept both "accessToken" and "token" keys
-            var accessToken = json.optString("accessToken", "")
-            if (accessToken.isEmpty()) {
-                accessToken = json.optString("token", "")
+            mainHandler.post {
+                when (type) {
+                    "openExternalUrl" -> handleOpenExternalUrl(json)
+                    "userAuth" -> handleUserAuth(json)
+                    "userLogout" -> sdk?.handleUserLogoutReceived()
+                    "appReady" -> sdk?.handleAppReady()
+                    "locationPermissionRequest" -> {
+                        val activity = context as? Activity
+                        sdk?.handleLocationPermissionRequest(activity)
+                    }
+                    "haptic.play" -> hapticPattern?.let(hapticEngine::play)
+                    "locationPermissionStatus",
+                    "locationUpdate" -> {
+                        println("[RTLSdk] Unexpected incoming location message: $type")
+                    }
+                    else -> println("[RTLSdk] Unknown message type: $type")
+                }
             }
-            val refreshToken = json.optString("refreshToken", "")
-
-            if (accessToken.isEmpty() || refreshToken.isEmpty()) {
-                println("[RTLSdk] Missing tokens in userAuth message")
-                return
-            }
-
-            sdk?.handleUserAuthReceived(accessToken, refreshToken)
+        } catch (e: Exception) {
+            println("[RTLSdk] Error parsing message: ${e.message}")
         }
     }
+
+    private fun handleOpenExternalUrl(json: JSONObject) {
+        val url = json.optString("URL", "")
+        if (url.isEmpty()) {
+            println("[RTLSdk] Invalid URL in openExternalUrl message")
+            return
+        }
+
+        val forceExternal = when (val value = json.opt("forceExternalBrowser")) {
+            is Boolean -> value
+            is String -> value.equals("true", ignoreCase = true)
+            else -> false
+        }
+
+        sdk?.handleOpenUrl(url, forceExternal)
+    }
+
+    private fun handleUserAuth(json: JSONObject) {
+        var accessToken = json.optString("accessToken", "")
+        if (accessToken.isEmpty()) {
+            accessToken = json.optString("token", "")
+        }
+        val refreshToken = json.optString("refreshToken", "")
+
+        if (accessToken.isEmpty() || refreshToken.isEmpty()) {
+            println("[RTLSdk] Missing tokens in userAuth message")
+            return
+        }
+
+        sdk?.handleUserAuthReceived(accessToken, refreshToken)
+    }
+
+    private fun injectNativeCapabilities(target: WebView?) {
+        target?.evaluateJavascript(nativeCapabilitiesScript(), null)
+    }
+
+    private fun nativeCapabilitiesScript(): String {
+        return nativeCapabilitiesScript(hapticEngine.capabilities())
+    }
+}
+
+internal fun nativeCapabilitiesScript(haptics: Map<String, Any>): String {
+    val capabilities = JSONObject(mapOf("haptics" to haptics)).toString()
+    return """
+        (function() {
+            var capabilities = $capabilities;
+            Object.freeze(capabilities.haptics);
+            Object.freeze(capabilities);
+            window.NativeAppCapabilities = capabilities;
+            window.rtlNativeCapabilities = capabilities;
+            window.dispatchEvent(new CustomEvent('NativeAppCapabilitiesReady', { detail: capabilities }));
+            window.dispatchEvent(new CustomEvent('rtlNativeCapabilitiesReady', { detail: capabilities }));
+        })();
+    """.trimIndent()
+}
+
+internal fun webMessageOriginRule(urlString: String): String? {
+    val url = try {
+        URI(urlString)
+    } catch (_: IllegalArgumentException) {
+        return null
+    }
+    val scheme = url.scheme?.lowercase() ?: return null
+    val host = url.host ?: return null
+    if (scheme != "https" && scheme != "http") return null
+
+    val formattedHost = when {
+        host.startsWith("[") -> host
+        ':' in host -> "[$host]"
+        else -> host
+    }
+    val port = if (url.port == -1) "" else ":${url.port}"
+    return "$scheme://$formattedHost$port"
 }

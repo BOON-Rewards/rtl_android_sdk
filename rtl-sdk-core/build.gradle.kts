@@ -43,6 +43,8 @@ dependencies {
     implementation("org.json:json:20231013")
     implementation("androidx.lifecycle:lifecycle-process:2.6.2")
     implementation("androidx.browser:browser:1.7.0") // Chrome Custom Tabs for in-app browser
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.webkit:webkit:1.12.1")
     // Note: Location services moved to rtl-sdk-location module
 }
 
