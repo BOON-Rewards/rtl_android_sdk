@@ -11,11 +11,4 @@ object HyperlocalOffersExample {
     fun enable(sdk: RTLSdk, activity: Activity) = Unit
 
     fun disable(sdk: RTLSdk) = Unit
-
-    fun handlePermissionResult(
-        sdk: RTLSdk,
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) = Unit
 }

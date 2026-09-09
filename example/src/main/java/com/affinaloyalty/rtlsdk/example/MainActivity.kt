@@ -164,8 +164,7 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        HyperlocalOffersExample.handlePermissionResult(
-            RTLSdk.getInstance(),
+        RTLSdk.getInstance().handlePermissionResult(
             requestCode,
             permissions,
             grantResults

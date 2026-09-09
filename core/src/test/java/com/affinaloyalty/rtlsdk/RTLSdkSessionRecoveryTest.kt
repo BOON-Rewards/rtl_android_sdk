@@ -77,6 +77,10 @@ class RTLSdkSessionRecoveryTest {
         val listener = RecordingListener(token = "unused")
         sdkField("listener").set(sdk, listener)
 
+        val attemptType = sdkField("activeAttempt").type
+        val attempt = attemptType.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        attemptType.getDeclaredField("awaitingWeb").apply { isAccessible = true }.setBoolean(attempt, true)
+        sdkField("activeAttempt").set(sdk, attempt)
         sdkField("isExperienceLoading").setBoolean(sdk, true)
         sdk.handleAppReady()
         assertEquals(listOf(false), listener.loadingStates)
@@ -87,6 +91,32 @@ class RTLSdkSessionRecoveryTest {
         sdk.handleAuthFailure()
         assertEquals(listOf(false), listener.loadingStates)
         assertEquals(1, listener.readyCount)
+    }
+
+    @Test
+    fun `interactive login registration leaves the host loader off until sign in`() {
+        val listener = RecordingListener(token = null)
+        sdkField("listener").set(sdk, listener)
+        // Register the interactive attempt without creating an Android WebView.
+        val attemptType = sdkField("activeAttempt").type
+        val attempt = attemptType.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        attemptType.getDeclaredField("awaitingWeb").apply { isAccessible = true }.setBoolean(attempt, true)
+        RTLSdk::class.java.getDeclaredMethod("beginAuthentication", attemptType)
+            .apply { isAccessible = true }
+            .invoke(sdk, attempt)
+
+        assertEquals(emptyList<Boolean>(), listener.loadingStates)
+        assertEquals(0, listener.tokenRequestCount)
+        assertEquals(0, listener.readyCount)
+        assertEquals(false, sdk.webviewIsReady)
+
+        sdk.handleAppReady()
+        assertEquals(1, listener.readyCount)
+        assertEquals(emptyList<Boolean>(), listener.loadingStates)
+        sdk.logout()
+        sdk.handleAppReady()
+        assertEquals(1, listener.readyCount)
+        assertEquals(false, sdk.webviewIsReady)
     }
 
     @Test
@@ -139,6 +169,37 @@ class RTLSdkSessionRecoveryTest {
         listener.tokens[1].complete(null)
         runCurrent()
         assertEquals("token_unavailable", second.await().errorCode)
+    }
+
+    @Test
+    fun `readiness without authentication cannot reveal a logged out session`() {
+        val listener = RecordingListener(token = null)
+        sdkField("listener").set(sdk, listener)
+        sdk.logout()
+        sdk.handleAppReady()
+        assertEquals(0, listener.readyCount)
+        assertEquals(false, sdk.webviewIsReady)
+    }
+
+    @Test
+    fun `late handoff readiness after logout is ignored`() = runTest(mainDispatcher) {
+        val listener = RecordingListener(token = null)
+        sdkField("listener").set(sdk, listener)
+        // Hold token acquisition, then simulate the handoff stage without an Android WebView.
+        val delayed = DelayedListener()
+        sdkField("listener").set(sdk, delayed)
+        val presentation = async { sdk.presentExperience() }
+        runCurrent()
+        val attempt = sdkField("activeAttempt").get(sdk)
+        attempt.javaClass.getDeclaredField("awaitingWeb").apply { isAccessible = true }.setBoolean(attempt, true)
+        sdkField("listener").set(sdk, listener)
+        sdk.logout()
+        assertEquals("request_cancelled", presentation.await().errorCode)
+        sdk.handleAppReady()
+        assertEquals(0, listener.readyCount)
+        assertEquals(false, sdk.webviewIsReady)
+        delayed.tokens.single().complete(null)
+        runCurrent()
     }
 
     private class DelayedListener : RTLSdkListener {

@@ -22,6 +22,17 @@ internal class RTLBridge(
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
+    private var isActive = true
+    private var foregroundLocation: RTLForegroundLocation? = null
+
+    fun invalidate() {
+        isActive = false
+        foregroundLocation?.cancel()
+        foregroundLocation = null
+    }
+
+    fun handlePermissionResult(requestCode: Int): Boolean =
+        foregroundLocation?.handlePermissionResult(requestCode) ?: false
 
     fun install(webView: WebView) {
         this.webView = webView
@@ -46,6 +57,7 @@ internal class RTLBridge(
                     isMainFrame: Boolean,
                     replyProxy: JavaScriptReplyProxy
                 ) {
+                    if (!isActive) return
                     if (!isMainFrame || sdk?.isAllowedWebUrl(sourceOrigin) != true) {
                         RTLLog.w(BRIDGE) { "Ignoring a bridge message from an untrusted frame" }
                         return
@@ -61,6 +73,10 @@ internal class RTLBridge(
             val payload = serializeNativeMessage(type, fields)
             RTLLog.d(BRIDGE) { "Sending message to web app: ${type.wireName}" }
             mainHandler.post {
+                if (!isActive) return@post
+                if (type == RTLNativeMessageType.LOCATION_RESULT &&
+                    webView?.url?.let { sdk?.isAllowedWebUrl(Uri.parse(it)) } != true
+                ) return@post
                 webView?.evaluateJavascript(
                     "window.postMessage($payload, window.location.origin)",
                     null
@@ -85,6 +101,8 @@ internal class RTLBridge(
 
         RTLLog.i(BRIDGE) { "Received message from web app: ${message.wireName}" }
         mainHandler.post {
+            // The document may have been retired while this message was queued.
+            if (!isActive) return@post
             when (message) {
                 is RTLWebMessage.OpenExternalUrl -> sdk?.handleOpenUrl(
                     message.url,
@@ -96,6 +114,17 @@ internal class RTLBridge(
                 RTLWebMessage.SessionExpired -> sdk?.handleSessionExpired()
                 RTLWebMessage.RequestLocationPermission -> {
                     sdk?.handleLocationPermissionRequest(context as? Activity)
+                }
+                is RTLWebMessage.RequestLocation -> {
+                    if (foregroundLocation == null) {
+                        foregroundLocation = RTLForegroundLocation(
+                            { foregroundLocationActivity(webView?.context) },
+                            { host, permissions, code -> sdk?.requestPermissions(host, permissions, code) }
+                        )
+                    }
+                    foregroundLocation?.request { fields ->
+                        sendToWeb(RTLNativeMessageType.LOCATION_RESULT, fields + ("requestId" to message.requestId))
+                    }
                 }
                 is RTLWebMessage.HapticPlay -> hapticEngine.play(message.pattern)
                 RTLWebMessage.RequestNativeCapabilities -> sendCapabilities()
@@ -137,6 +166,9 @@ internal sealed interface RTLWebMessage {
     object RequestLocationPermission : RTLWebMessage {
         override val wireName = "requestLocationPermission"
     }
+    data class RequestLocation(val requestId: String) : RTLWebMessage {
+        override val wireName = "requestLocation"
+    }
     data class HapticPlay(val pattern: RTLHapticPattern) : RTLWebMessage {
         override val wireName = "hapticPlay"
     }
@@ -168,6 +200,11 @@ internal sealed interface RTLWebMessage {
                 "appReady" -> AppReady
                 "sessionExpired" -> SessionExpired
                 "requestLocationPermission" -> RequestLocationPermission
+                "requestLocation" -> {
+                    val requestId = message.opt("requestId") as? String
+                    require(!requestId.isNullOrEmpty() && requestId.length <= 128) { "requestId must be 1 to 128 characters" }
+                    RequestLocation(requestId)
+                }
                 "hapticPlay" -> HapticPlay(
                     RTLHapticPattern.parse(message.opt("payload") as? JSONObject)
                 )
@@ -183,6 +220,7 @@ internal enum class RTLNativeMessageType(val wireName: String) {
     LOGOUT_REQUESTED("logoutRequested"),
     LOCATION_PERMISSION_STATUS("locationPermissionStatus"),
     LOCATION_UPDATE("locationUpdate"),
+    LOCATION_RESULT("locationResult"),
     OVERLAY_COMPLETED("overlayCompleted");
 }
 

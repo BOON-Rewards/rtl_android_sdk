@@ -17,13 +17,4 @@ object HyperlocalOffersExample {
     fun disable(sdk: RTLSdk) {
         sdk.disableLocationFeatures()
     }
-
-    fun handlePermissionResult(
-        sdk: RTLSdk,
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        sdk.handlePermissionResult(requestCode, permissions, grantResults)
-    }
 }

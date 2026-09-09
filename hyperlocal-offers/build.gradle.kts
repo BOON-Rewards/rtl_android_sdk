@@ -57,7 +57,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-location"
-            version = "2.0.0"
+            version = "2.1.0"
 
             afterEvaluate {
                 from(components["release"])
@@ -71,7 +71,6 @@ publishing {
                 licenses {
                     license {
                         name.set("Proprietary")
-                        url.set("https://github.com/BOON-Rewards/rtl_android_sdk/blob/main/LICENSE.md")
                     }
                 }
             }
