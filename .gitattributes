@@ -1,0 +1,5 @@
+# Release checks verify the official wrapper's exact bytes on every platform.
+gradlew text eol=lf
+gradlew.bat -text
+gradle/wrapper/gradle-wrapper.jar -text
+gradle/wrapper/gradle-wrapper.properties text eol=lf
