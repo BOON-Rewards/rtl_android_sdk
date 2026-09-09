@@ -15,7 +15,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RTLSdk"
-include(":rtl-sdk-core")
-include(":rtl-sdk-location")
-include(":example-core")
-include(":example-location")
+include(":core")
+include(":hyperlocal-offers")
+include(":example")
