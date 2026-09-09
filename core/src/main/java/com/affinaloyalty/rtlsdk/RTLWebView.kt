@@ -21,45 +21,24 @@ class RTLWebView internal constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    private val webView: WebView
+    private var webView: WebView
     private val refreshLayout: SwipeRefreshLayout
+    // SwipeRefreshLayout caches its content child. Keep that child stable when
+    // authentication replaces the WebView, so the new view is measured and laid out.
+    private val contentContainer = FrameLayout(context)
     private val hapticEngine = RTLHapticEngine(context)
     private val allowedOriginRules = sdk?.currentBaseUrl
         ?.let(::webMessageOriginRule)
         ?.let(::setOf)
         .orEmpty()
 
-    private val bridge = RTLBridge(context, sdk, hapticEngine, allowedOriginRules)
+    private var bridge = RTLBridge(context, sdk, hapticEngine, allowedOriginRules)
+
+    internal fun handleLocationPermissionResult(requestCode: Int): Boolean =
+        bridge.handlePermissionResult(requestCode)
 
     init {
-        webView = WebView(context).apply {
-            layoutParams = LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.MATCH_PARENT
-            )
-
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                mediaPlaybackRequiresUserGesture = false
-                allowContentAccess = false
-                allowFileAccess = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-
-                // Enable zoom
-                builtInZoomControls = false
-                displayZoomControls = false
-            }
-
-            // Enable debugging in debug builds (check at runtime to avoid BuildConfig dependency)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                WebView.setWebContentsDebuggingEnabled(isDebuggable)
-            }
-
-            webViewClient = RTLWebViewClient()
-            webChromeClient = WebChromeClient()
-        }
+        webView = createInnerWebView()
 
         bridge.install(webView)
 
@@ -83,11 +62,60 @@ class RTLWebView internal constructor(
             }
         }
 
+        contentContainer.addView(webView)
         refreshLayout.addView(
-            webView,
+            contentContainer,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
         addView(refreshLayout)
+    }
+
+    private fun createInnerWebView(): WebView = WebView(context).apply {
+        layoutParams = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.MATCH_PARENT
+        )
+
+        settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowContentAccess = false
+            allowFileAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+
+            // Enable zoom
+            builtInZoomControls = false
+            displayZoomControls = false
+        }
+
+        // Enable debugging in debug builds (check at runtime to avoid BuildConfig dependency)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            WebView.setWebContentsDebuggingEnabled(isDebuggable)
+        }
+
+        webViewClient = RTLWebViewClient()
+        webChromeClient = WebChromeClient()
+    }
+
+    internal fun invalidateDocument() {
+        bridge.invalidate()
+        webView.stopLoading()
+        webView.loadUrl("about:blank")
+        webView.visibility = INVISIBLE
+        hapticEngine.cancel()
+    }
+
+    internal fun prepareAuthenticationDocument() {
+        invalidateDocument()
+        refreshLayout.isRefreshing = false
+        contentContainer.removeView(webView)
+        webView.destroy()
+        bridge = RTLBridge(context, sdk, hapticEngine, allowedOriginRules)
+        webView = createInnerWebView()
+        bridge.install(webView)
+        contentContainer.addView(webView)
     }
 
     /**
@@ -104,6 +132,8 @@ class RTLWebView internal constructor(
      * @suppress
      */
     fun loadLoginForExample(url: String) {
+        sdk?.beginExampleLogin(this)
+        prepareAuthenticationDocument()
         webView.loadUrl(url)
     }
 

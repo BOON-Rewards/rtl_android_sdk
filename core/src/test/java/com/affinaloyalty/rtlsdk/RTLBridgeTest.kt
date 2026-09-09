@@ -45,6 +45,20 @@ class RTLBridgeTest {
         assertNull(RTLWebMessage.parse("""{"type":"somethingElse"}"""))
     }
 
+    @Test
+    fun `foreground location requires a correlation id`() {
+        assertEquals(
+            RTLWebMessage.RequestLocation("location-1"),
+            RTLWebMessage.parse("""{"type":"requestLocation","requestId":"location-1"}""")
+        )
+        listOf(null, "", "a".repeat(129), 42).forEach { value ->
+            val message = JSONObject(mapOf("type" to "requestLocation", "requestId" to value))
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                RTLWebMessage.parse(message.toString())
+            }
+        }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `rejects an open message without a surface`() {
         RTLWebMessage.parse(

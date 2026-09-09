@@ -207,6 +207,7 @@ class RTLSdk private constructor() {
         }
 
         cancelAuthentication()
+        webView?.invalidateDocument()
         this.baseUrl = parsedBaseUrl
         this.urlScheme = urlScheme
         this.listener = listener
@@ -234,6 +235,8 @@ class RTLSdk private constructor() {
         if (!isInitialized) {
             throw IllegalStateException("RTLSdk not initialized. Call initialize() first.")
         }
+        cancelAuthentication()
+        this.webView?.invalidateDocument()
         webviewIsReady = false
         val webView = RTLWebView(context, this)
         webView.visibility = View.INVISIBLE
@@ -267,11 +270,7 @@ class RTLSdk private constructor() {
         rtlEventId: String? = null,
         rtlRedirectUrl: String? = null
     ) {
-        activeAttempt?.let {
-            finishAuthentication(it, rtlExperienceFailure(RTLExperienceError.REQUEST_CANCELLED), keepLoading = true)
-        }
-        activeAttempt = attempt
-        webviewIsReady = false
+        beginAuthentication(attempt)
         updateExperienceLoading(true)
         val tokenProvider = listener
         attempt.tokenJob = CoroutineScope(Dispatchers.Main.immediate).launch {
@@ -294,6 +293,7 @@ class RTLSdk private constructor() {
                     finishAuthentication(attempt, rtlExperienceFailure(RTLExperienceError.INVALID_TOKEN_FORWARD_URL))
                     return@launch
                 }
+                view.prepareAuthenticationDocument()
                 attempt.awaitingWeb = true
                 attempt.timeoutJob = CoroutineScope(Dispatchers.Main.immediate).launch {
                     delay(LOGIN_TIMEOUT_MS)
@@ -314,6 +314,8 @@ class RTLSdk private constructor() {
      */
     fun logout() {
         cancelAuthentication()
+        webviewIsReady = false
+        webView?.visibility = View.INVISIBLE
         webView?.sendToWeb(RTLNativeMessageType.LOGOUT_REQUESTED)
     }
 
@@ -412,6 +414,7 @@ class RTLSdk private constructor() {
         permissions: Array<out String>,
         grantResults: IntArray
     ): Boolean {
+        if (webView?.handleLocationPermissionResult(requestCode) == true) return true
         return locationExtension?.handlePermissionResult(requestCode, permissions, grantResults) ?: false
     }
 
@@ -558,6 +561,7 @@ class RTLSdk private constructor() {
 
     internal fun handleUserLogoutReceived() {
         cancelAuthentication()
+        webView?.invalidateDocument()
         webviewIsReady = false
         webView?.visibility = View.INVISIBLE
     }
@@ -691,8 +695,30 @@ class RTLSdk private constructor() {
         RTLLog.i(CORE) { "Open took ${System.currentTimeMillis() - startedAt}ms from loadStart to appReady" }
     }
 
+    private fun beginAuthentication(attempt: AuthenticationAttempt) {
+        activeAttempt?.let {
+            finishAuthentication(it, rtlExperienceFailure(RTLExperienceError.REQUEST_CANCELLED), keepLoading = true)
+        }
+        activeAttempt = attempt
+        webView?.invalidateDocument()
+        webviewIsReady = false
+    }
+
+    internal fun beginExampleLogin(view: RTLWebView) {
+        if (webView !== view) return
+        val attempt = AuthenticationAttempt().apply { awaitingWeb = true }
+        beginAuthentication(attempt)
+        // Interactive sign-in must stay visible: appReady arrives only after
+        // the user signs in. A host loader here would cover the login form.
+        updateExperienceLoading(false)
+        view.visibility = View.VISIBLE
+    }
+
     internal fun handleAppReady() {
-        if (activeAttempt?.awaitingWeb == false) return
+        val attempt = activeAttempt
+        if (attempt != null) {
+            if (!attempt.awaitingWeb) return
+        } else if (!webviewIsReady) return
         reportOpenDuration()
         RTLLog.d(CORE) { "Received appReady from the webview" }
         webviewIsReady = true
@@ -887,7 +913,7 @@ class RTLSdk private constructor() {
         if (attempt != null) {
             finishAuthentication(attempt, result)
         } else {
-            // Bundled examples can authenticate directly in the WebView.
+            // Readiness may also follow a reload of the current session.
             updateExperienceLoading(false)
         }
     }
@@ -899,6 +925,11 @@ class RTLSdk private constructor() {
     ) {
         if (activeAttempt !== attempt) return
         activeAttempt = null
+        if (!result.success) {
+            webviewIsReady = false
+            webView?.visibility = View.INVISIBLE
+            webView?.invalidateDocument()
+        }
         attempt.tokenJob?.cancel()
         attempt.timeoutJob?.cancel()
         if (!keepLoading) updateExperienceLoading(false)
