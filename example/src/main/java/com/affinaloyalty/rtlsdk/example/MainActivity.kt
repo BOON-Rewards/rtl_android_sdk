@@ -14,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.affinaloyalty.rtlsdk.RTLLog
 import com.affinaloyalty.rtlsdk.RTLSdk
 import com.affinaloyalty.rtlsdk.RTLSdkListener
-import com.affinaloyalty.rtlsdk.RTLStore
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), RTLSdkListener {
@@ -191,14 +190,5 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
         Log.d("RTLExample", "SDK requesting token...")
         // TODO: Fetch a fresh JWT from your backend. Never embed credentials in the app.
         return null
-    }
-
-    // Optional location callbacks
-    override val onLocationPermissionChange: ((granted: Boolean) -> Unit)? = { granted ->
-        Log.d("RTLExample", "Location permission changed: $granted")
-    }
-
-    override val onGeofenceEnter: ((store: RTLStore) -> Unit)? = { store ->
-        Log.d("RTLExample", "Entered geofence for store: ${store.name}")
     }
 }
