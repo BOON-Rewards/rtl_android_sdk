@@ -353,8 +353,6 @@ class RTLSdk private constructor() {
 
         // Set up callbacks
         extension.onPermissionChange = { granted ->
-            listener?.onLocationPermissionChange?.invoke(granted)
-
             // Send to webview if it's waiting for a permission response
             if (webviewAwaitingPermissionResponse) {
                 webviewAwaitingPermissionResponse = false
@@ -367,10 +365,6 @@ class RTLSdk private constructor() {
             if (webviewIsReady) {
                 geocodeAndSendLocationUpdate(location)
             }
-        }
-
-        extension.onGeofenceEnter = { store ->
-            listener?.onGeofenceEnter?.invoke(store)
         }
 
         // If webview is already ready, send current permission status

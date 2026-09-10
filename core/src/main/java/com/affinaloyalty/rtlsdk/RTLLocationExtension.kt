@@ -81,9 +81,4 @@ interface RTLLocationExtension {
      * Set callback for when location updates are received
      */
     var onLocationUpdate: ((location: Location) -> Unit)?
-
-    /**
-     * Set callback for when a geofence is entered
-     */
-    var onGeofenceEnter: ((store: RTLStore) -> Unit)?
 }

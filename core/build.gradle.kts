@@ -65,7 +65,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-core"
-            version = "2.1.2"
+            version = "2.1.3"
 
             afterEvaluate {
                 from(components["release"])
@@ -73,7 +73,7 @@ publishing {
 
             pom {
                 name.set("RTL SDK Core")
-                description.set("Core Android SDK for RTL (Rewards, Transactions, Loyalty) platform integration - without location features")
+                description.set("Core Android SDK for RTL platform integration - without location features")
                 url.set("https://github.com/BOON-Rewards/rtl_android_sdk")
 
                 licenses {
