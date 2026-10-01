@@ -27,20 +27,4 @@ interface RTLSdkListener {
      * @return JWT token string, or null if unavailable
      */
     suspend fun provideAuthToken(): String?
-
-    // MARK: - Location Callbacks (Optional)
-
-    /**
-     * Optional callback for location permission changes.
-     * Set this property to receive notifications when location permission status changes.
-     */
-    val onLocationPermissionChange: ((granted: Boolean) -> Unit)?
-        get() = null
-
-    /**
-     * Optional callback for geofence entry.
-     * Set this property to receive notifications when user enters a store geofence.
-     */
-    val onGeofenceEnter: ((store: RTLStore) -> Unit)?
-        get() = null
 }

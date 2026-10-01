@@ -221,7 +221,8 @@ internal enum class RTLNativeMessageType(val wireName: String) {
     LOCATION_PERMISSION_STATUS("locationPermissionStatus"),
     LOCATION_UPDATE("locationUpdate"),
     LOCATION_RESULT("locationResult"),
-    OVERLAY_COMPLETED("overlayCompleted");
+    OVERLAY_COMPLETED("overlayCompleted"),
+    OVERLAY_DISMISSED("overlayDismissed");
 }
 
 internal fun serializeNativeMessage(

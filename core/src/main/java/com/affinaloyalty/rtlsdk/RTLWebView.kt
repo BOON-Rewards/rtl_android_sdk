@@ -33,6 +33,17 @@ class RTLWebView internal constructor(
         .orEmpty()
 
     private var bridge = RTLBridge(context, sdk, hapticEngine, allowedOriginRules)
+    private var exampleAuthenticationHandler: ((String, String, HttpAuthHandler) -> Unit)? = null
+
+    /**
+     * Example-host HTTP authentication only; credentials remain in the host.
+     * @suppress
+     */
+    fun setAuthenticationChallengeHandlerForExample(
+        handler: ((String, String, HttpAuthHandler) -> Unit)?
+    ) {
+        exampleAuthenticationHandler = handler
+    }
 
     internal fun handleLocationPermissionResult(requestCode: Int): Boolean =
         bridge.handlePermissionResult(requestCode)
@@ -187,6 +198,14 @@ class RTLWebView internal constructor(
      * WebViewClient for handling navigation
      */
     private inner class RTLWebViewClient : WebViewClient() {
+
+        override fun onReceivedHttpAuthRequest(
+            view: WebView, handler: HttpAuthHandler, host: String, realm: String
+        ) {
+            val authentication = exampleAuthenticationHandler
+            if (authentication != null) authentication(host, realm, handler)
+            else super.onReceivedHttpAuthRequest(view, handler, host, realm)
+        }
 
         override fun shouldOverrideUrlLoading(
             view: WebView?,
