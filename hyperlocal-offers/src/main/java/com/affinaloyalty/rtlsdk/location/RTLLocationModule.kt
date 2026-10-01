@@ -5,7 +5,6 @@ import android.content.Context
 import android.location.Location
 import com.affinaloyalty.rtlsdk.RTLLocationExtension
 import com.affinaloyalty.rtlsdk.RTLSdk
-import com.affinaloyalty.rtlsdk.RTLStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,7 +38,6 @@ object RTLLocationModule : RTLLocationExtension {
 
     override var onPermissionChange: ((granted: Boolean) -> Unit)? = null
     override var onLocationUpdate: ((location: Location) -> Unit)? = null
-    override var onGeofenceEnter: ((store: RTLStore) -> Unit)? = null
 
     /**
      * Install the location module into RTLSdk.
@@ -104,7 +102,6 @@ object RTLLocationModule : RTLLocationExtension {
         // Set up geofence enter handler
         geofenceManager?.onGeofenceEnter = { store ->
             notificationManager?.showNotification(store)
-            onGeofenceEnter?.invoke(store)
         }
 
         // Request permissions

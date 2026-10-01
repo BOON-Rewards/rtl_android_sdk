@@ -127,6 +127,7 @@ class RTLSdk private constructor() {
         get() = webViewRef?.get()
         private set(value) { webViewRef = value?.let { WeakReference(it) } }
     private var currentActivityRef: WeakReference<Activity>? = null
+    private var authOverlayDismissal: RTLAuthOverlayDismissal? = null
 
     // Location Extension (provided by rtl-sdk-location module)
     /**
@@ -207,6 +208,7 @@ class RTLSdk private constructor() {
         }
 
         cancelAuthentication()
+        stopTrackingAuthOverlay()
         webView?.invalidateDocument()
         this.baseUrl = parsedBaseUrl
         this.urlScheme = urlScheme
@@ -236,6 +238,7 @@ class RTLSdk private constructor() {
             throw IllegalStateException("RTLSdk not initialized. Call initialize() first.")
         }
         cancelAuthentication()
+        stopTrackingAuthOverlay()
         this.webView?.invalidateDocument()
         webviewIsReady = false
         val webView = RTLWebView(context, this)
@@ -314,6 +317,7 @@ class RTLSdk private constructor() {
      */
     fun logout() {
         cancelAuthentication()
+        stopTrackingAuthOverlay()
         webviewIsReady = false
         webView?.visibility = View.INVISIBLE
         webView?.sendToWeb(RTLNativeMessageType.LOGOUT_REQUESTED)
@@ -353,8 +357,6 @@ class RTLSdk private constructor() {
 
         // Set up callbacks
         extension.onPermissionChange = { granted ->
-            listener?.onLocationPermissionChange?.invoke(granted)
-
             // Send to webview if it's waiting for a permission response
             if (webviewAwaitingPermissionResponse) {
                 webviewAwaitingPermissionResponse = false
@@ -367,10 +369,6 @@ class RTLSdk private constructor() {
             if (webviewIsReady) {
                 geocodeAndSendLocationUpdate(location)
             }
-        }
-
-        extension.onGeofenceEnter = { store ->
-            listener?.onGeofenceEnter?.invoke(store)
         }
 
         // If webview is already ready, send current permission status
@@ -658,6 +656,10 @@ class RTLSdk private constructor() {
             return
         }
 
+        // A callback completes the flow before the host activity resumes.
+        // Do not also report that return as a dismissed Custom Tab.
+        stopTrackingAuthOverlay()
+
         // Consumer owns completion types and data validation. Forward new flow
         // types without an SDK upgrade, always inside the fixed envelope.
         // Cold starts use the URL fallback until the page listener is ready.
@@ -777,8 +779,7 @@ class RTLSdk private constructor() {
      *
      * A Custom Tab, which Chrome owns and this app cannot read into. Android
      * renders it the same way as [RTLSurface.OVERLAY]; what differs is that
-     * this one is restricted to our own host, and will carry the callback
-     * handling when that lands.
+     * this one is restricted to our own host and reports completion or dismissal.
      *
      * The web decides *that* this surface is needed; the SDK decides *where* it
      * may point, and that is our own host only. A request naming anywhere else
@@ -807,6 +808,17 @@ class RTLSdk private constructor() {
             return
         }
 
+        stopTrackingAuthOverlay()
+        val surface = if (requireConfiguredHost) RTLSurface.AUTH else RTLSurface.PROVIDER_AUTH
+        val dismissal = RTLAuthOverlayDismissal(activity.application, activity) {
+            authOverlayDismissal = null
+            webView?.sendToWeb(
+                RTLNativeMessageType.OVERLAY_DISMISSED,
+                mapOf("surface" to surface.wireValue)
+            )
+        }
+        authOverlayDismissal = dismissal
+
         try {
             val customTabsIntent = CustomTabsIntent.Builder()
                 .setShowTitle(true)
@@ -825,9 +837,15 @@ class RTLSdk private constructor() {
             RTLLog.i(CORE) { "Opened an isolated auth overlay for ${destination.host ?: "-"}" }
         } catch (e: Exception) {
             RTLLog.e(CORE, e) { "Failed to open the Custom Tab" }
+            dismissal.dismiss()
             return
         }
 
+    }
+
+    private fun stopTrackingAuthOverlay() {
+        authOverlayDismissal?.stop()
+        authOverlayDismissal = null
     }
 
     /**

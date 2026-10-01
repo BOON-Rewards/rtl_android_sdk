@@ -61,6 +61,5 @@ class RTLSdkLocationAuthorizationTest {
         override val currentLocation: Location? = null
         override var onPermissionChange: ((granted: Boolean) -> Unit)? = null
         override var onLocationUpdate: ((location: Location) -> Unit)? = null
-        override var onGeofenceEnter: ((store: RTLStore) -> Unit)? = null
     }
 }
