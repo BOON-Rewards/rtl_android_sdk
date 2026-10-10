@@ -65,7 +65,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-core"
-            version = "3.0.0"
+            version = "3.1.0"
 
             afterEvaluate {
                 from(components["release"])

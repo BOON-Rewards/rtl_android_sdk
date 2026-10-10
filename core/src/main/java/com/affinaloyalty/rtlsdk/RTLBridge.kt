@@ -1,6 +1,5 @@
 package com.affinaloyalty.rtlsdk
 
-import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
@@ -113,7 +112,7 @@ internal class RTLBridge(
                 RTLWebMessage.AppReady -> sdk?.handleAppReady()
                 RTLWebMessage.SessionExpired -> sdk?.handleSessionExpired()
                 RTLWebMessage.RequestLocationPermission -> {
-                    sdk?.handleLocationPermissionRequest(context as? Activity)
+                    sdk?.handleLocationPermissionRequest(foregroundLocationActivity(context))
                 }
                 is RTLWebMessage.RequestLocation -> {
                     if (foregroundLocation == null) {
