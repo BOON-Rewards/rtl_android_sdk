@@ -222,6 +222,11 @@ class RTLSdk private constructor() {
         setupLifecycleObserver()
     }
 
+    /** Updates the wrapper host after Activity recreation without reauthenticating. */
+    fun updateHostActivity(activity: Activity) {
+        currentActivityRef = WeakReference(activity)
+    }
+
     private fun setupLifecycleObserver() {
         ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
