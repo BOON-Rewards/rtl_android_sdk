@@ -711,6 +711,19 @@ class RTLSdk private constructor() {
         webviewIsReady = false
     }
 
+    internal fun exampleLoginUrl(url: String): String {
+        val uri = Uri.parse(url)
+        return uri.buildUpon().clearQuery().apply {
+            for (name in uri.queryParameterNames) {
+                if (name != "isWrappedMobileApp" && name != "appScheme") {
+                    for (value in uri.getQueryParameters(name)) appendQueryParameter(name, value)
+                }
+            }
+            appendQueryParameter("isWrappedMobileApp", "true")
+            urlScheme?.let { appendQueryParameter("appScheme", it) }
+        }.build().toString()
+    }
+
     internal fun beginExampleLogin(view: RTLWebView) {
         if (webView !== view) return
         val attempt = AuthenticationAttempt().apply { awaitingWeb = true }
