@@ -36,12 +36,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
@@ -65,7 +67,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-core"
-            version = "3.1.0"
+            version = "4.0.0"
 
             afterEvaluate {
                 from(components["release"])

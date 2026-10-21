@@ -145,7 +145,7 @@ class RTLWebView internal constructor(
     fun loadLoginForExample(url: String) {
         sdk?.beginExampleLogin(this)
         prepareAuthenticationDocument()
-        webView.loadUrl(url)
+        webView.loadUrl(sdk?.exampleLoginUrl(url) ?: url)
     }
 
     /**
