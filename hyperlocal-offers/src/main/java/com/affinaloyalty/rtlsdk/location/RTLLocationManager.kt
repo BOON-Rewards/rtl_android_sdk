@@ -134,6 +134,15 @@ internal class RTLLocationManager(
      */
     private fun requestBackgroundPermission(activity: Activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val declared = context.packageManager
+                .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+                .requestedPermissions.orEmpty()
+            if (Manifest.permission.ACCESS_BACKGROUND_LOCATION !in declared) {
+                RTLLog.w(LOCATION) { "Background location is not enabled in the host manifest" }
+                onPermissionChange?.invoke(false)
+                sdk.sendLocationPermissionStatus(false)
+                return
+            }
             RTLLog.d(LOCATION) { "Requesting background location permission" }
             sdk.requestPermissions(
                 activity,

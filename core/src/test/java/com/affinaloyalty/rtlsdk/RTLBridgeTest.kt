@@ -41,6 +41,19 @@ class RTLBridgeTest {
     }
 
     @Test
+    fun `crisp impact preserves parameters and produces a short maximum pulse`() {
+        val message = RTLWebMessage.parse(
+            """{"type":"hapticPlay","payload":{"version":1,"events":[{"at":0,"type":"impact","intensity":1,"sharpness":1}]}}"""
+        ) as RTLWebMessage.HapticPlay
+        val event = message.pattern.events.single()
+        assertEquals(1.0, event.intensity, 0.0)
+        assertEquals(1.0, event.sharpness, 0.0)
+        val waveform = RTLHapticWaveform.create(message.pattern)
+        assertTrue(waveform.timings.contentEquals(longArrayOf(30)))
+        assertTrue(waveform.amplitudes.contentEquals(intArrayOf(255)))
+    }
+
+    @Test
     fun `ignores unknown messages`() {
         assertNull(RTLWebMessage.parse("""{"type":"somethingElse"}"""))
     }
