@@ -48,7 +48,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.json:json:20231013")
 
     // Location services for geofencing
     implementation("com.google.android.gms:play-services-location:21.0.1")
@@ -59,7 +58,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-location"
-            version = "4.1.0"
+            version = "4.2.0"
 
             afterEvaluate {
                 from(components["release"])
