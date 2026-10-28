@@ -52,13 +52,14 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.json:json:20231013")
     implementation("androidx.lifecycle:lifecycle-process:2.6.2")
     implementation("androidx.browser:browser:1.7.0") // Chrome Custom Tabs for in-app browser
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.webkit:webkit:1.12.1")
     // Note: Location services moved to rtl-sdk-location module
     testImplementation("junit:junit:4.13.2")
+    // Android supplies org.json at runtime; only local JVM tests need this implementation.
+    testImplementation("org.json:json:20231013")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }
 
@@ -67,7 +68,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.affinaloyalty"
             artifactId = "rtl-sdk-core"
-            version = "4.1.0"
+            version = "4.2.0"
 
             afterEvaluate {
                 from(components["release"])
