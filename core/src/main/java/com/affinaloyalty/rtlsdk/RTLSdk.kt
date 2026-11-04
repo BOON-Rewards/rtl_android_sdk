@@ -56,7 +56,7 @@ internal fun parseRTLDeepLink(
 ): RTLDeepLinkRoute? {
     if (configuredScheme == null ||
         !scheme.equals(configuredScheme, ignoreCase = true) ||
-        !host.equals("rtl-sdk", ignoreCase = true)
+        !host.equals("rtl-callback", ignoreCase = true)
     ) {
         return null
     }
@@ -69,7 +69,7 @@ internal fun parseRTLDeepLink(
             rtlEventId = eventId.takeIf { redirect == null },
             rtlRedirectUrl = redirect
         )
-        "/callback" -> RTLDeepLinkRoute.Callback
+        null, "", "/callback" -> RTLDeepLinkRoute.Callback
         else -> null
     }
 }
@@ -585,15 +585,16 @@ class RTLSdk private constructor() {
     /**
      * Route an RTL deep link received by the host app.
      *
-     * `<scheme>://rtl-sdk/open` presents the experience. The optional
+     * `<scheme>://rtl-callback/open` presents the experience. The optional
      * `rtlRedirectUrl` takes precedence over `rtlEventId` after authentication.
-     * `<scheme>://rtl-sdk/callback` returns from an SDK-owned browser overlay.
+     * `<scheme>://rtl-callback/callback` returns from an SDK-owned browser overlay.
+     * A pathless `rtl-callback` URL is retained as a browser callback alias.
      *
      * Returns true when the URL belongs to the SDK. Presentation completes
      * asynchronously through the normal loading and readiness callbacks.
      */
     fun handleDeepLink(url: Uri): Boolean {
-        if (!url.isHierarchical) return false
+        if (!url.isHierarchical || url.userInfo != null || url.port != -1) return false
         val route = parseRTLDeepLink(
             scheme = url.scheme,
             host = url.host,
@@ -620,9 +621,15 @@ class RTLSdk private constructor() {
         }
     }
 
-    private fun handleOverlayCallback(url: Uri) {
+    private fun handleOverlayCallback(callback: Uri) {
+        // Android's plural query decoder leaves raw '+' literal instead of decoding a space.
+        fun formQuery(uri: Uri): Uri = uri.buildUpon()
+            .encodedQuery(uri.encodedQuery?.replace("+", "%20"))
+            .build()
+
+        val url = formQuery(callback)
         val target = url.getQueryParameter("redirectUrl")
-        val destination = target?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        val destination = target?.let { runCatching { formQuery(Uri.parse(it)) }.getOrNull() }
         if (destination == null) {
             RTLLog.e(CORE) { "Overlay returned without a usable redirectUrl" }
             return
