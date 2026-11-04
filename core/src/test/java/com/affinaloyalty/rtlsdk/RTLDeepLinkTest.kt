@@ -32,7 +32,7 @@ class RTLDeepLinkTest {
     fun `parses the open route and gives redirect precedence`() {
         val route = parseRTLDeepLink(
             scheme = "example",
-            host = "rtl-sdk",
+            host = "rtl-callback",
             path = "/open",
             configuredScheme = "example",
             rtlEventId = "event-1",
@@ -49,13 +49,13 @@ class RTLDeepLinkTest {
     fun `parses default event and callback routes`() {
         assertEquals(
             RTLDeepLinkRoute.Open(null, null),
-            parseRTLDeepLink("example", "rtl-sdk", "/open", "example")
+            parseRTLDeepLink("example", "rtl-callback", "/open", "example")
         )
         assertEquals(
             RTLDeepLinkRoute.Open("event-1", null),
             parseRTLDeepLink(
                 "example",
-                "rtl-sdk",
+                "rtl-callback",
                 "/open",
                 "example",
                 rtlEventId = "event-1"
@@ -65,7 +65,7 @@ class RTLDeepLinkTest {
             RTLDeepLinkRoute.Open("event-1", null),
             parseRTLDeepLink(
                 "example",
-                "rtl-sdk",
+                "rtl-callback",
                 "/open",
                 "example",
                 rtlEventId = "event-1",
@@ -73,20 +73,32 @@ class RTLDeepLinkTest {
             )
         )
         assertTrue(
-            parseRTLDeepLink("example", "rtl-sdk", "/callback", "example") ===
+            parseRTLDeepLink("example", "rtl-callback", "/callback", "example") ===
                 RTLDeepLinkRoute.Callback
         )
         assertTrue(
-            parseRTLDeepLink("EXAMPLE", "rtl-sdk", "/callback", "example") ===
+            parseRTLDeepLink("EXAMPLE", "rtl-callback", "/callback", "example") ===
                 RTLDeepLinkRoute.Callback
         )
     }
 
     @Test
-    fun `rejects legacy and unrelated routes`() {
-        assertNull(parseRTLDeepLink("example", "rtlSdk", null, "example"))
-        assertNull(parseRTLDeepLink("example", "rtl-callback", null, "example"))
-        assertNull(parseRTLDeepLink("example", "rtl-sdk", "/unknown", "example"))
-        assertNull(parseRTLDeepLink("other", "rtl-sdk", "/open", "example"))
+    fun `accepts pathless callback aliases`() {
+        listOf(null, "").forEach { path ->
+            assertEquals(
+                RTLDeepLinkRoute.Callback,
+                parseRTLDeepLink("EXAMPLE", "RTL-CALLBACK", path, "example")
+            )
+        }
+    }
+
+    @Test
+    fun `rejects unrelated routes`() {
+        assertNull(parseRTLDeepLink("example", "rtl-callback", "/unknown", "example"))
+        assertNull(parseRTLDeepLink("other", "rtl-callback", "/open", "example"))
+        assertNull(parseRTLDeepLink("example", "rtl-callback", "/", "example"))
+        assertNull(parseRTLDeepLink("example", "rtl-callback", "/open/extra", "example"))
+        assertNull(parseRTLDeepLink("example", "rtl-callback.evil.example", "/open", "example"))
+        assertNull(parseRTLDeepLink("example", "rtl-callback", "/open", null))
     }
 }
