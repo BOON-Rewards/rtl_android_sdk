@@ -1,6 +1,7 @@
 package com.affinaloyalty.rtlsdk.example
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -17,6 +18,8 @@ import com.affinaloyalty.rtlsdk.RTLSdkListener
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), RTLSdkListener {
+    private var experienceReady = false
+    private val pendingDeepLinks = mutableListOf<Uri>()
 
     private lateinit var statusText: TextView
     private lateinit var loginButton: Button
@@ -90,7 +93,7 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
 
     private fun handleEntryIntent(intent: Intent?) {
         val deepLink = intent?.data
-        if (deepLink != null && RTLSdk.getInstance().handleDeepLink(deepLink)) {
+        if (deepLink != null && handleDeepLink(deepLink)) {
             return
         }
 
@@ -102,6 +105,17 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
             )
             return
         }
+    }
+
+    private fun handleDeepLink(url: Uri): Boolean {
+        if (!experienceReady) {
+            pendingDeepLinks.add(url)
+            statusText.text = "Tap Login to open the link."
+            return true
+        }
+        val handled = RTLSdk.getInstance().handleDeepLink(url)
+        if (handled && url.path == "/open") experienceReady = false
+        return handled
     }
 
     private fun launchExperience(
@@ -126,6 +140,8 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
     }
 
     private fun logout() {
+        experienceReady = false
+        pendingDeepLinks.clear()
         RTLSdk.getInstance().logout()
         HyperlocalOffersExample.disable(RTLSdk.getInstance())
         rtlWebView.visibility = View.INVISIBLE
@@ -174,11 +190,15 @@ class MainActivity : AppCompatActivity(), RTLSdkListener {
 
     override fun onReady() {
         Log.d("RTLExample", "RTL app is ready")
+        experienceReady = true
         statusText.visibility = View.GONE
         loginButton.visibility = View.GONE
         logoutButton.visibility = View.VISIBLE
         supportActionBar?.hide()
         HyperlocalOffersExample.enable(RTLSdk.getInstance(), this)
+        val links = pendingDeepLinks.toList()
+        pendingDeepLinks.clear()
+        links.forEach(::handleDeepLink)
     }
 
     override fun onLoadingStateChanged(isLoading: Boolean) {

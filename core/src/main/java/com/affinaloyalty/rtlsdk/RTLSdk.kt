@@ -18,6 +18,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.affinaloyalty.rtlsdk.RTLLogArea.CORE
 import kotlinx.coroutines.*
 import java.lang.ref.WeakReference
+import java.util.IdentityHashMap
 
 data class RTLExperienceResult internal constructor(
     val success: Boolean,
@@ -105,6 +106,47 @@ class RTLSdk private constructor() {
 
     // Configuration
     private var baseUrl: Uri? = null
+
+    private var configuredHostContext: Map<String, Any?> = emptyMap()
+
+    /** JSON-compatible host context, exposed through the native capabilities bridge. */
+    val hostContext: Map<String, Any?> get() = configuredHostContext
+
+    /** Replace host context after initialization and before creating the view. */
+    @Suppress("UNCHECKED_CAST")
+    fun setHostContext(context: Map<String, Any?>) {
+        configuredHostContext = copyHostContextValue(context, IdentityHashMap()) as Map<String, Any?>
+    }
+
+    private fun copyHostContextValue(value: Any?, ancestors: IdentityHashMap<Any?, Boolean>): Any? {
+        val container = value is Map<*, *> || value is List<*>
+        if (container) require(ancestors.put(value, true) == null) { "Host context must not contain cycles" }
+        try {
+            return when (value) {
+                null, is String, is Boolean -> value
+                is Byte, is Short, is Int, is Long, is Float, is Double -> {
+                    require((value as Number).toDouble().isFinite()) { "Host context numbers must be finite" }
+                    value
+                }
+                is Map<*, *> -> {
+                    val copy = linkedMapOf<String, Any?>()
+                    for ((key, item) in value) {
+                        require(key is String) { "Host context object keys must be strings" }
+                        copy[key] = copyHostContextValue(item, ancestors)
+                    }
+                    copy
+                }
+                is List<*> -> {
+                    val copy = mutableListOf<Any?>()
+                    for (item in value) copy.add(copyHostContextValue(item, ancestors))
+                    copy
+                }
+                else -> throw IllegalArgumentException("Host context must contain JSON-compatible values")
+            }
+        } finally {
+            if (container) ancestors.remove(value)
+        }
+    }
 
     /**
      * When the current open began loading. Cleared when reported, so a later
@@ -214,6 +256,7 @@ class RTLSdk private constructor() {
         this.urlScheme = urlScheme
         this.listener = listener
         this.externalChapterId = externalChapterId
+        this.configuredHostContext = emptyMap()
         this.application = context.application
         this.isInitialized = true
         this.currentActivityRef = WeakReference(context)
