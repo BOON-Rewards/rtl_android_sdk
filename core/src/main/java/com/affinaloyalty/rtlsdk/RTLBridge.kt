@@ -137,7 +137,8 @@ internal class RTLBridge(
             mapOf(
                 "capabilities" to mapOf(
                     "haptics" to hapticEngine.capabilities(),
-                    "unifiedDeepLinks" to true
+                    "unifiedDeepLinks" to true,
+                    "hostContext" to (sdk?.hostContext ?: emptyMap<String, Any?>())
                 )
             )
         )
